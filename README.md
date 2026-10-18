@@ -19,7 +19,7 @@ What counts as in or out of each lane is written down in [criteria/screening-cri
 1. **Sources** deliver raw publications. Today that is the Swiss commercial-register gazette (SHAB): every new company registered in Switzerland.
 2. **Screening** discards everything that can't take venture money (only an AG or a GmbH can) for free. Claude Haiku then judges the rest against the lane definitions, for an estimated $1 a month.
 3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review.
-4. **Triage** *(next)*. Once a week I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
+4. **Triage**. Once a week I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
 5. **Outcomes** *(later)*. A watchlist checks whether those rounds happen, and each Call resolves to yes or no.
 6. **Track record** *(later)*. Hit rate, calibration and lead time: how many days before the public announcement I was convinced.
 
@@ -47,7 +47,8 @@ The reasoning behind these choices is in [docs/adr](docs/adr). The domain vocabu
 | Version | Content | Status |
 |---|---|---|
 | v1 | SHAB screening onto the radar | ✅ built and tested |
-| v1 | Triage with Scorecard and Calls, sortable table | next |
+| v1 | Triage with Scorecard and Calls, mobile Feed, sortable table | ✅ built and tested |
+| v1 | Deployment: hosted database, scheduled runs, single login | next |
 | v1 | Second source (#Brandneu news feed), Quick Add, weekly email | planned |
 | v2 | Newsletter inbox, watchlist and outcomes, track record, per-fund views | planned |
 | v3 | Backtest on 2022–23 cohorts, more sources, learning loops for screening and prediction | planned |
