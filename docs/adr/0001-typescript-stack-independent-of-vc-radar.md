@@ -9,4 +9,4 @@ Dealflow is a single TypeScript codebase: a Next.js app on Vercel at a raphael.a
 
 ## Consequences
 
-Merging with `vc-radar` later means porting its logic to TypeScript. That is accepted, since the Owner is unhappy with `vc-radar` anyway.
+Merging with `vc-radar` later means porting its logic to TypeScript. That is accepted: Dealflow is a deliberate fresh start rather than an extension of `vc-radar`.

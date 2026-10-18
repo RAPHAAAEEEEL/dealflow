@@ -1,0 +1,39 @@
+:root {
+  --navy: #000323;
+  --sky: #a6ddff;
+  --white: #ffffff;
+  --sky-soft: #eaf6ff;
+  --bg: #f5f7fb;
+  --line: #dfe3ec;
+  --muted: #5d6377;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { color: var(--navy); background: var(--bg); font-size: 14px; line-height: 1.45; }
+h1 { font-size: 16pt; font-weight: 700; margin: 0; }
+
+.top { display: flex; align-items: center; gap: 20px; background: var(--navy); color: var(--white); padding: 12px 20px; position: sticky; top: 0; z-index: 5; }
+.tab { border-radius: 999px; padding: 6px 12px; font-weight: 600; color: rgba(255, 255, 255, 0.72); }
+.tab.on { background: var(--sky); color: var(--navy); }
+.main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+.table-wrap { overflow-x: auto; border-radius: 10px; box-shadow: 0 1px 2px rgba(0, 3, 35, 0.06); }
+table { width: 100%; border-collapse: collapse; background: var(--white); }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.chip { display: inline-block; border-radius: 999px; padding: 2px 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; border: 1px solid var(--line); background: var(--white); }
+.chip.lane { background: var(--sky-soft); border-color: transparent; }
+.chip.candidate { border-color: var(--navy); }
+.small { font-size: 12px; }
+.muted { color: var(--muted); }
+.official { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 420px; border-left: 3px solid var(--line); padding-left: 8px; }
+.empty { background: var(--white); border-radius: 10px; padding: 40px; text-align: center; }
+code { background: var(--sky-soft); padding: 1px 6px; border-radius: 6px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 16px; }
+footer a { color: inherit; }
+
+@media (max-width: 760px) {
+  .hide-s { display: none; }
+  .main { padding: 12px; }
+}
