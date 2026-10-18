@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "job:shab": "tsx --env-file-if-exists=.env.local scripts/run-shab.ts",
+    "digest": "tsx --env-file-if-exists=.env.local scripts/send-digest.ts",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/migrate.ts",
     "vercel-build": "npm run db:migrate && next build"
   },

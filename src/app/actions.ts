@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { NearMissError } from "@/triage/near-misses";
 import { TriageError } from "@/triage/triage";
 import { CLAIMS, OWNER_FACTORS, type Claim, type OwnerFactor, type TriageInput } from "@/triage/types";
-import { getTriage } from "./db";
+import { getNearMisses, getTriage } from "./db";
 import { isOwner } from "./owner";
 
 export type DecideState = { error?: string };
@@ -39,6 +40,26 @@ export async function decide(_: DecideState, form: FormData): Promise<DecideStat
     await (await getTriage()).decide(startupId, input);
   } catch (error) {
     if (error instanceof TriageError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath("/", "layout");
+  return {};
+}
+
+export type NearMissState = { error?: string };
+
+// The Owner's verdict on a Near Miss: pull it into Triage, or confirm Screening was right to discard it.
+export async function reviewNearMiss(_: NearMissState, form: FormData): Promise<NearMissState> {
+  if (!(await isOwner())) return { error: "Only the Owner can judge Near Misses. Sign in again." };
+  const sightingId = String(form.get("sightingId"));
+  const verdict = String(form.get("verdict"));
+  const nearMisses = await getNearMisses();
+  try {
+    if (verdict === "Pulled In") await nearMisses.pullIn(sightingId);
+    else if (verdict === "Rightly Out") await nearMisses.rightlyOut(sightingId);
+    else return { error: `Unknown verdict "${verdict}".` };
+  } catch (error) {
+    if (error instanceof NearMissError) return { error: error.message };
     throw error;
   }
   revalidatePath("/", "layout");

@@ -2,6 +2,7 @@ import { date, doublePrecision, integer, jsonb, pgTable, text, timestamp, unique
 import type { Stage, StartupStatus } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
 import type { Sighting } from "@/sighting";
+import type { NearMissVerdict } from "@/triage/near-misses";
 import type { Claim, TriageDecision } from "@/triage/types";
 
 // Terms follow CONTEXT.md. Founders' names are never stored (docs/adr/0003). Company names are
@@ -50,6 +51,10 @@ export const sightings = pgTable(
     screeningReason: text("screening_reason"),
     screenedBy: text("screened_by"), // "stage-rule" or the Claude model
     criteriaVersion: integer("criteria_version"),
+    // What Claude said about a Sighting it discarded, so a Near Miss can be shown and pulled in.
+    nearestLane: text("nearest_lane").$type<Lane>(),
+    closeness: integer("closeness"),
+    oneLiner: text("one_liner"),
     startupId: uuid("startup_id").references(() => startups.id),
   },
   (t) => [uniqueIndex("sightings_source_external_id").on(t.source, t.externalId)],
@@ -89,6 +94,14 @@ export const triageDecisions = pgTable("triage_decisions", {
   laneFit: integer("lane_fit"),
   fundability: integer("fundability"),
   momentum: integer("momentum"),
+});
+
+// The Owner's verdict on a Near Miss: Screening should have kept it, or rightly discarded it.
+export const nearMissReviews = pgTable("near_miss_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sightingId: uuid("sighting_id").notNull().unique().references(() => sightings.id),
+  verdict: text("verdict").$type<NearMissVerdict>().notNull(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull(),
 });
 
 // Calls never change. A later Call on the same startup and Claim is a Revision (CONTEXT.md).

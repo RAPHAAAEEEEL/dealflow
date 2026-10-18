@@ -180,13 +180,13 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job).
+# STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job, Sunday digest).
 # Secrets are typed hidden, piped to gh / the Vercel CLI, and never printed.
 # Resume after finished stages:  START_AT=6 ./scripts/setup-deployment.sh
 # Redo a single stage:            ONLY=3 ./scripts/setup-deployment.sh
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=10
+TOTAL_STAGES=12
 ONLY="${ONLY:-}"
 START_AT="${ONLY:-${START_AT:-1}}"
 END_AT="${ONLY:-$TOTAL_STAGES}"
@@ -477,6 +477,51 @@ stage_10() {
     else
       SKIPPED+=("First SHAB run (GitHub → Actions → SHAB job → Run workflow)")
       warn "Couldn't start the run; start it in GitHub → Actions → SHAB job → Run workflow."
+    fi
+  fi
+  pause
+}
+
+stage_11() {
+  stage "Sunday email"
+  say "Every Sunday evening the radar emails you the waiting Candidates, the week's Near Misses and a"
+  say "status check. It goes out through Resend, for free. Without a domain of your own, Resend delivers"
+  say "only to the address you open the account with, so use the address you read every day."
+  open_url "https://resend.com/signup"
+  step "Sign up, or log in, with the email address you read every day."
+  step "Open API Keys → Create API Key. Name: dealflow. Permission: Sending access."
+  step "Copy the key. It starts with re_, and Resend shows it only once."
+  ask_secret_until_or_clipboard RESEND_API_KEY "API key (hidden), or c for the clipboard:" '^re_[A-Za-z0-9_]{20,80}$' "That isn't one Resend API key: it starts with re_ and is about 36 characters long."
+  set_secret RESEND_API_KEY "$RESEND_API_KEY"
+  ask_until DEALFLOW_DIGEST_TO "The email address of your Resend account:" '^[^@[:space:]]+@[^@[:space:]]+\.[A-Za-z]{2,}$' "That doesn't look like an email address."
+  set_secret DEALFLOW_DIGEST_TO "$DEALFLOW_DIGEST_TO"
+  note "Stored as a secret, so the address never shows in the public repository or its logs."
+  if [[ -n "$DEALFLOW_APP_URL" ]]; then
+    set_var DEALFLOW_APP_URL "$DEALFLOW_APP_URL"
+  else
+    warn "The app's address is missing, so the email can't link to the Feed. Run stage 5, then this one: START_AT=5"
+  fi
+  pause
+}
+
+stage_12() {
+  stage "First digest"
+  say "Let's send this week's digest now, so you know it arrives."
+  git fetch --quiet origin main
+  if ! git cat-file -e origin/main:.github/workflows/digest.yml 2>/dev/null; then
+    warn "GitHub's main branch doesn't contain the digest yet. Ask Claude to merge and push slice 4, then: ONLY=12"
+    pause
+    return
+  fi
+  if confirm "Send the digest to your inbox now?"; then
+    if gh workflow run digest.yml -R "$REPO" >/dev/null 2>&1; then
+      printf '  %s✓%s Started. It takes about a minute.\n' "$GREEN" "$RESET"
+      open_url "https://github.com/$REPO/actions/workflows/digest.yml"
+      step "When the run is green, look for an email starting with 'Dealflow:'. Check spam too, and mark it 'not spam'."
+      note "A red run? Its log says whether Resend refused it. Then redo the key and address: ONLY=11"
+    else
+      SKIPPED+=("First digest (GitHub → Actions → Sunday digest → Run workflow)")
+      warn "Couldn't start it; start it in GitHub → Actions → Sunday digest → Run workflow."
     fi
   fi
   pause

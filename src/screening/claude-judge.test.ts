@@ -59,6 +59,26 @@ describe("Claude judge", () => {
     await expect(judge.judge(sighting, criteria)).rejects.toMatchObject({ usage: { costUsd: expect.closeTo(0.001054, 10) } });
   });
 
+  test("keeps how close a discarded entry came to its nearest Lane", async () => {
+    const nearMiss = {
+      ...answer(0),
+      inScope: false,
+      lane: "agents",
+      closeness: 65,
+      oneLiner: "Consulting on AI evaluation for banks.",
+      reason: "Services for third parties.",
+    };
+    const judge = createClaudeJudge(fakeClaude({ stop_reason: "end_turn", parsed_output: nearMiss, usage: usage(200, 60) }));
+
+    expect(await judge.judge(sighting, criteria)).toMatchObject({
+      inLane: false,
+      nearestLane: "agents",
+      closeness: 65,
+      oneLiner: "Consulting on AI evaluation for banks.",
+      reason: "Services for third parties.",
+    });
+  });
+
   test("keeps the Priority between 0 and 100", async () => {
     const judge = createClaudeJudge(fakeClaude({ stop_reason: "end_turn", parsed_output: answer(140), usage: usage(200, 60) }));
 

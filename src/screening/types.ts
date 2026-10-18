@@ -14,7 +14,8 @@ export type Criteria = { version: number; text: string };
 
 export type Usage = { model: string; inputTokens: number; outputTokens: number; costUsd: number };
 
-// Claude's part of Screening: either the Sighting belongs in a Lane, or it doesn't.
+// Claude's part of Screening: either the Sighting belongs in a Lane, or it doesn't. A discarded one
+// still says how close it came to its nearest Lane, so the Owner can catch a Near Miss.
 export type Judgement =
   | {
       inLane: true;
@@ -25,7 +26,14 @@ export type Judgement =
       reason: string;
       usage: Usage;
     }
-  | { inLane: false; reason: string; usage: Usage };
+  | {
+      inLane: false;
+      nearestLane: Lane | null; // null when it is nowhere near any Lane
+      closeness: number; // 0–100, how close it came to fitting the nearest Lane
+      oneLiner: string;
+      reason: string;
+      usage: Usage;
+    };
 
 // The boundary to Claude. Tests replace it with a fake; production uses Claude Haiku.
 export type Judge = {

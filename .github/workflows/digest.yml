@@ -1,0 +1,39 @@
+name: Sunday digest
+
+# Emails the Owner what waits for Triage, the week's Near Misses and the Status Check (docs/adr/0008).
+# Sundays at 17:00 UTC: 18:00 in Switzerland in winter, 19:00 in summer. It can also be sent by hand,
+# from main only.
+on:
+  schedule:
+    - cron: "0 17 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: digest
+  cancel-in-progress: false
+
+jobs:
+  send:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      # A secret, so the Owner's address never shows in this public repo or its logs.
+      DEALFLOW_DIGEST_TO: ${{ secrets.DEALFLOW_DIGEST_TO }}
+      SHAB_TERMS_ACCEPTED_ON: ${{ vars.SHAB_TERMS_ACCEPTED_ON }}
+      DEALFLOW_APP_URL: ${{ vars.DEALFLOW_APP_URL }}
+    steps:
+      # Pinned to commits, because this job holds secrets.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The log shows only whether it was sent and how many warnings it had.
+      - run: npm run digest

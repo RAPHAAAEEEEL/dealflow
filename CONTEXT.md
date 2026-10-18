@@ -64,6 +64,14 @@ _Avoid_: Event, update, news
 The chronological record of everything about one startup: its Signals, Triage decisions, Calls and Outcomes.
 _Avoid_: History, log, feed (the Feed is a view)
 
+**Near Miss**:
+A Sighting that Screening discarded although it came close to a Lane. The Feed shows the week's closest ones; the Owner either pulls one into Triage, which makes it a Candidate, or confirms it was rightly out. Both verdicts feed Proposals to the Screening Criteria.
+_Avoid_: False negative, borderline case, reject
+
+**Closeness**:
+How close a discarded Sighting came to its nearest Lane, from 0 to 100. Screening sets it; only a Sighting with a Closeness of at least 20 can be a Near Miss.
+_Avoid_: Score, Priority (that orders Candidates)
+
 ### Triage and Calls
 
 **Candidate**:
@@ -135,6 +143,14 @@ _Avoid_: Inbox, stream
 **Radar Map**:
 The desktop view that places each startup by Lane (sector) and stage (ring).
 _Avoid_: Dashboard, chart
+
+**Digest**:
+The email the Owner gets every Sunday: the Candidates waiting for Triage, the week's Near Misses and the Status Check.
+_Avoid_: Newsletter, report, notification
+
+**Status Check**:
+The part of the Digest that says whether the radar ran as it should: missing or broken Source runs, Sightings waiting for Screening, Claude spend against the cap, and when the SHAB terms must be accepted again.
+_Avoid_: Health check, monitoring
 
 ### Outcomes and Track Record
 

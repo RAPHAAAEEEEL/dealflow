@@ -18,8 +18,8 @@ What counts as in or out of each lane is written down in [criteria/screening-cri
 
 1. **Sources** deliver raw publications. Today that is the Swiss commercial-register gazette (SHAB): every new company registered in Switzerland.
 2. **Screening** discards everything that can't take venture money (only an AG or a GmbH can) for free. Claude Haiku then judges the rest against the lane definitions, for an estimated $1 a month.
-3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review.
-4. **Triage**. Once a week I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
+3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review. Entries that Claude discarded but found close to a lane show up as **near misses**: I either pull one into review or confirm it was rightly out, and both verdicts become evidence for changing the lane definitions.
+4. **Triage**. Every Sunday an email brings the waiting candidates, the week's near misses and a status check of the pipeline. Then I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
 5. **Outcomes** *(later)*. A watchlist checks whether those rounds happen, and each Call resolves to yes or no.
 6. **Track record** *(later)*. Hit rate, calibration and lead time: how many days before the public announcement I was convinced.
 
@@ -49,7 +49,8 @@ The reasoning behind these choices is in [docs/adr](docs/adr). The domain vocabu
 | v1 | SHAB screening onto the radar | ✅ built and tested |
 | v1 | Triage with Scorecard and Calls, mobile Feed, sortable table | ✅ built and tested |
 | v1 | Deployment: Vercel and Neon in Frankfurt, daily SHAB job, GitHub login for the Owner | ✅ built; set up with `scripts/setup-deployment.sh` |
-| v1 | Second source (#Brandneu), Quick Add, weekly email with status check | next |
+| v1 | Near misses in the Feed, Sunday email with status check | ✅ built and tested |
+| v1 | Second source (#Brandneu), Quick Add | next |
 | v2 | Newsletter inbox, watchlist and outcomes, track record, per-fund views | planned |
 | v3 | Backtest on 2022–23 cohorts, more sources, learning loops for screening and prediction | planned |
 
@@ -67,11 +68,12 @@ To screen real registrations, copy `.env.example` to `.env.local` and fill in a 
 
 ```bash
 npm run job:shab -- 2026-10-16
+npm run digest -- --print   # the Sunday email, shown here instead of sent
 ```
 
 ## Deploying
 
-`scripts/setup-deployment.sh` walks through everything only a human can do: accepting the SHAB terms, a Claude API key, a Neon database, the Vercel project, a GitHub OAuth app. Secrets are typed hidden and go straight to GitHub and Vercel. After that, GitHub Actions screens the previous day's SHAB entries every Tuesday to Saturday morning. The decisions behind the setup are in [docs/adr/0007](docs/adr/0007-deployment-and-public-ci.md).
+`scripts/setup-deployment.sh` walks through everything only a human can do: accepting the SHAB terms, a Claude API key, a Neon database, the Vercel project, a GitHub OAuth app. Secrets are typed hidden and go straight to GitHub and Vercel. Stages 11 and 12 set up the Sunday email through Resend. After that, GitHub Actions screens the previous day's SHAB entries every Tuesday to Saturday morning and sends the digest on Sunday evening. The decisions behind the setup are in [docs/adr/0007](docs/adr/0007-deployment-and-public-ci.md).
 
 ## Stack
 

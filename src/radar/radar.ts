@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@/db";
 import { calls, legalEntities, signals, sightings, startups, triageDecisions } from "@/db/schema";
-import type { Judgement, Lane } from "@/screening/types";
+import type { Lane } from "@/screening/types";
 import type { Sighting } from "@/sighting";
 import { CLAIMS, scorecardFrom, type Claim, type Scorecard, type TriageDecision } from "@/triage/types";
 
@@ -105,18 +105,25 @@ export function createRadar(db: Db) {
   };
 }
 
-export type ScreeningStamp = { screenedAt: Date; criteriaVersion: number };
+// Where a startup goes on the radar: from Screening, or from the Owner pulling in a Near Miss.
+export type Placement = { lane: Lane; secondaryLane: Lane | null; oneLiner: string; priority: number };
 
-// Puts a Sighting that Screening placed in a Lane on the radar. A Legal Entity the radar already knows
-// gets the new Signal on its Startup; otherwise a new Candidate is created with its Legal Entity and
-// first Signal. The Sighting is marked screened in the same transaction, so if anything fails it stays
-// waiting for the next run instead of becoming a Signal without a Startup.
+// Screening's record on the Sighting. A pulled-in Near Miss keeps Claude's original record.
+export type ScreeningRecord = { screenedAt: Date; criteriaVersion: number; screeningReason: string; screenedBy: string };
+
+// Puts a Sighting on the radar. A Legal Entity the radar already knows gets the new Signal on its
+// Startup; otherwise a new Candidate is created with its Legal Entity and first Signal. `at` starts
+// the Candidate's four weeks. The Sighting is marked in the same transaction, so if anything fails it
+// stays as it was instead of becoming a Signal without a Startup.
 export async function putOnRadar(
   db: Db,
-  sightingId: string,
-  sighting: Sighting,
-  judgement: Extract<Judgement, { inLane: true }>,
-  stamp: ScreeningStamp,
+  {
+    sightingId,
+    sighting,
+    placement,
+    at,
+    screening,
+  }: { sightingId: string; sighting: Sighting; placement: Placement; at: Date; screening?: ScreeningRecord },
 ) {
   const entity = sighting.legalEntity;
   await db.transaction(async (tx) => {
@@ -131,22 +138,22 @@ export async function putOnRadar(
     if (startupId) {
       // Something new happened: a waiting or Expired startup goes back into Triage with a fresh four weeks.
       if (known.status === "Candidate" || known.status === "Expired") {
-        await tx.update(startups).set({ status: "Candidate", statusChangedAt: stamp.screenedAt }).where(eq(startups.id, startupId));
+        await tx.update(startups).set({ status: "Candidate", statusChangedAt: at }).where(eq(startups.id, startupId));
       }
     } else {
       const [startup] = await tx
         .insert(startups)
         .values({
           name: entity.name,
-          lane: judgement.lane,
-          secondaryLane: judgement.secondaryLane,
+          lane: placement.lane,
+          secondaryLane: placement.secondaryLane,
           stage: "Pre-round",
           status: "Candidate",
-          statusChangedAt: stamp.screenedAt,
-          priority: judgement.priority,
+          statusChangedAt: at,
+          priority: placement.priority,
           hq: entity.seat.replace(/\s*\([A-Z]{2}\)$/, ""),
           country: "CH",
-          oneLiner: judgement.oneLiner,
+          oneLiner: placement.oneLiner,
           firstSeen: sighting.publishedOn,
         })
         .returning({ id: startups.id });
@@ -169,18 +176,13 @@ export async function putOnRadar(
     });
     await tx
       .update(sightings)
-      .set({
-        ...stamp,
-        screening: "signal",
-        screeningReason: judgement.reason,
-        screenedBy: judgement.usage.model,
-        startupId,
-      })
+      .set({ ...screening, screening: "signal", startupId })
       .where(eq(sightings.id, sightingId));
   });
 }
 
-function registrationText({ legalEntity: e }: Sighting) {
+// The Signal text for a new registration. It quotes the register, so it is shown apart from the radar's own words (SHAB terms).
+export function registrationText({ legalEntity: e }: Sighting) {
   const capital = e.capitalChf === null ? "" : ` Share capital CHF ${e.capitalChf.toLocaleString("en-US")}.`;
   return `New registration: ${e.name}, ${e.seat}. Purpose: ${e.purpose || "none given."}${capital}`;
 }

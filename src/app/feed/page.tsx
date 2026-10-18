@@ -1,6 +1,7 @@
 import { requireOwner } from "../owner";
-import { getTriage } from "../db";
+import { getNearMisses, getTriage } from "../db";
 import { Nav, SourceNote } from "../nav";
+import { NearMissCard } from "./near-miss-card";
 import { TriageCard } from "./triage-card";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function FeedPage() {
   await requireOwner();
   const queue = await (await getTriage()).queue();
+  const nearMisses = await (await getNearMisses()).list();
 
   return (
     <>
@@ -26,6 +28,19 @@ export default async function FeedPage() {
         )}
         {queue.map((candidate) => (
           <TriageCard key={candidate.id} candidate={candidate} />
+        ))}
+
+        <h2 className="feed-section">Near misses</h2>
+        {nearMisses.length === 0 ? (
+          <p className="muted">No close discards this week.</p>
+        ) : (
+          <p className="muted small">
+            Screening discarded these, but they came close to a Lane. Pull one into Triage if Screening was wrong, or
+            confirm it was rightly out. Both verdicts teach the Screening Criteria.
+          </p>
+        )}
+        {nearMisses.map((nearMiss) => (
+          <NearMissCard key={nearMiss.sightingId} nearMiss={nearMiss} />
         ))}
         <SourceNote />
       </main>

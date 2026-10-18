@@ -13,7 +13,16 @@ export const inLane = (lane: Lane, priority: number, oneLiner: string): Verdict 
   reason: `Fits ${lane}.`,
 });
 
-export const outOfScope = (reason: string): Verdict => ({ inLane: false, reason });
+export const outOfScope = (reason: string): Verdict => ({ inLane: false, nearestLane: null, closeness: 0, oneLiner: "", reason });
+
+// Discarded, but close to a Lane.
+export const nearMiss = (nearestLane: Lane, closeness: number, oneLiner: string): Verdict => ({
+  inLane: false,
+  nearestLane,
+  closeness,
+  oneLiner,
+  reason: `Close to ${nearestLane}, but out.`,
+});
 
 export const usageCosting = (costUsd: number): Usage => ({ model: "fake-haiku", inputTokens: 900, outputTokens: 80, costUsd });
 

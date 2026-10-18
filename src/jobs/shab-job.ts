@@ -1,7 +1,7 @@
 import { asc, eq, gte, isNull, max, sum } from "drizzle-orm";
 import type { Db } from "@/db";
 import { llmUsage, sightings } from "@/db/schema";
-import { putOnRadar, type ScreeningStamp } from "@/radar/radar";
+import { putOnRadar } from "@/radar/radar";
 import { stageRuleRejects } from "@/screening/stage-rule";
 import { JudgeError, type Criteria, type Judge, type Judgement, type Usage } from "@/screening/types";
 import type { Sighting } from "@/sighting";
@@ -60,7 +60,7 @@ export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJ
 
 async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport) {
   const { db, judge, criteria } = deps;
-  const stamp = (): ScreeningStamp => ({ screenedAt: deps.now(), criteriaVersion: criteria.version });
+  const stamp = () => ({ screenedAt: deps.now(), criteriaVersion: criteria.version });
 
   for (const sighting of await deps.shab.fetchSightings(date)) {
     report.fetched++;
@@ -116,13 +116,15 @@ async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport)
     }
     await recordCost(judgement.usage);
 
+    const screened = { ...stamp(), screeningReason: judgement.reason, screenedBy: judgement.usage.model };
     if (judgement.inLane) {
-      await putOnRadar(db, id, sighting, judgement, stamp());
+      await putOnRadar(db, { sightingId: id, sighting, placement: judgement, at: screened.screenedAt, screening: screened });
       report.candidates++;
     } else {
+      const { nearestLane, closeness, oneLiner } = judgement;
       await db
         .update(sightings)
-        .set({ ...stamp(), screening: "discarded", screeningReason: judgement.reason, screenedBy: judgement.usage.model })
+        .set({ ...screened, screening: "discarded", nearestLane, closeness, oneLiner })
         .where(eq(sightings.id, id));
       report.discarded++;
     }
