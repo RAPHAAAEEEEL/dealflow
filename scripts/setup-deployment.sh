@@ -183,10 +183,17 @@ finish() {
 # STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job).
 # Secrets are typed hidden, piped to gh / the Vercel CLI, and never printed.
 # Resume after finished stages:  START_AT=6 ./scripts/setup-deployment.sh
+# Redo a single stage:            ONLY=3 ./scripts/setup-deployment.sh
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=10
-START_AT="${START_AT:-1}"
+ONLY="${ONLY:-}"
+START_AT="${ONLY:-${START_AT:-1}}"
+END_AT="${ONLY:-$TOTAL_STAGES}"
+if ! [[ "$START_AT" =~ ^[0-9]+$ && "$END_AT" =~ ^[0-9]+$ ]] || (( START_AT < 1 || END_AT > TOTAL_STAGES || START_AT > END_AT )); then
+  echo "START_AT and ONLY take a stage number from 1 to $TOTAL_STAGES." >&2
+  exit 1
+fi
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE=".env.local"
 REPO="RAPHAAAEEEEL/dealflow"
@@ -267,8 +274,9 @@ stage_3() {
   say "Screening uses Claude Haiku. The key is stored for local runs and as a GitHub secret for the daily job."
   open_url "https://console.anthropic.com/settings/keys"
   note "If the page has moved, open the Claude Console and go to Settings → API keys."
-  step "Create a key, name it 'dealflow', and copy it (it starts with sk-ant-)."
-  ask_secret_until ANTHROPIC_API_KEY "Paste the API key (hidden):" '^sk-ant-' "That doesn't look like a Claude API key (it starts with sk-ant-)."
+  step "Create a key, name it 'dealflow', and copy it. An API key starts with sk-ant-api."
+  note "Other Anthropic tokens (sk-ant-usr-…, sk-ant-oat-…) are not API keys and won't work here."
+  ask_secret_until ANTHROPIC_API_KEY "Paste the API key (hidden):" '^sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{60,}$' "That isn't a Claude API key: it starts with sk-ant-api and is about 100 characters long."
   write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
@@ -439,7 +447,7 @@ stage_10() {
 
 banner "Dealflow deployment"
 OWNER_GITHUB_ID=""
-for (( n = 1; n <= TOTAL_STAGES; n++ )); do
+for (( n = 1; n <= END_AT; n++ )); do
   if (( n < START_AT )); then
     _STAGE_INDEX=$n # skipped: finished in an earlier run
     continue

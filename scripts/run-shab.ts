@@ -48,6 +48,11 @@ try {
   // CI logs of a public repo show counts only; the full report is stored with the run (docs/adr/0007).
   console.log(publicSummary(report));
   if (report.errors.length && !process.env.CI) console.log(`Errors:\n  ${report.errors.slice(0, 5).join("\n  ")}`);
+  if (report.failed > 0) {
+    // A red run makes GitHub email the Owner; the entries stay waiting and the next run retries them.
+    console.error(`${report.failed} entries couldn't be screened. They wait for the next run; the reasons are stored with the run.`);
+    process.exitCode = 1;
+  }
 } catch (error) {
   // Error texts can carry company names (database errors include their query parameters), so CI only
   // learns that the run broke off; the reason is stored with the run.
