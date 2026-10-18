@@ -5,6 +5,7 @@ import { putOnRadar, type ScreeningStamp } from "@/radar/radar";
 import { stageRuleRejects } from "@/screening/stage-rule";
 import { JudgeError, type Criteria, type Judge, type Judgement, type Usage } from "@/screening/types";
 import type { Sighting } from "@/sighting";
+import { recordRun } from "./runs";
 
 export type ShabJobDeps = {
   db: Db;
@@ -26,9 +27,9 @@ export type ShabJobReport = {
 };
 
 // Fetches one day's new entries, then screens every Sighting still waiting, including ones an
-// earlier run left behind because the month's budget was used up (docs/adr/0005).
+// earlier run left behind because the month's budget was used up (docs/adr/0005). Every run is
+// recorded with its report, also one that breaks off, before the error is passed on.
 export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJobReport> {
-  const { db, judge, criteria } = deps;
   const report: ShabJobReport = {
     fetched: 0,
     candidates: 0,
@@ -38,6 +39,27 @@ export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJ
     errors: [],
     spentUsd: 0,
   };
+  const startedAt = deps.now();
+  const record = (error?: unknown) =>
+    recordRun(deps.db, {
+      job: "shab",
+      publicationDate: date,
+      startedAt,
+      finishedAt: deps.now(),
+      report: error === undefined ? report : { ...report, error: error instanceof Error ? error.message : String(error) },
+    });
+  try {
+    await screenDay(deps, date, report);
+  } catch (error) {
+    await record(error).catch(() => {}); // a failing record must not hide the original error
+    throw error;
+  }
+  await record();
+  return report;
+}
+
+async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport) {
+  const { db, judge, criteria } = deps;
   const stamp = (): ScreeningStamp => ({ screenedAt: deps.now(), criteriaVersion: criteria.version });
 
   for (const sighting of await deps.shab.fetchSightings(date)) {
@@ -105,7 +127,6 @@ export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJ
       report.discarded++;
     }
   }
-  return report;
 }
 
 // A call is allowed only if the month's spend plus the priciest call seen so far stays within the cap,
@@ -124,4 +145,16 @@ async function monthlyBudget({ db, monthlyCapUsd, now }: ShabJobDeps) {
       callEstimate = Math.max(callEstimate, costUsd);
     },
   };
+}
+
+// What may appear in a public CI log: counts only, no names and no error texts.
+export function publicSummary(report: ShabJobReport): string {
+  return [
+    `fetched ${report.fetched}`,
+    `candidates ${report.candidates}`,
+    `discarded ${report.discarded}`,
+    `waiting for budget ${report.waitingForBudget}`,
+    `failed ${report.failed}`,
+    `spent $${report.spentUsd.toFixed(4)}`,
+  ].join(" · ");
 }

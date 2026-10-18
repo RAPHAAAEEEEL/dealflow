@@ -5,7 +5,8 @@ import { fakeJudge, inLane, outOfScope, usageCosting } from "@/screening/judge.t
 import { JudgeError, type Judge } from "@/screening/types";
 import { createShabSource } from "@/sources/shab";
 import { exampleEntry, fakeShabHttp, type FakeRegistration } from "@/sources/shab.testing";
-import { runShabJob } from "./shab-job";
+import { latestRuns } from "./runs";
+import { publicSummary, runShabJob } from "./shab-job";
 
 const criteria = { version: 1, text: "Lane definitions for the test." };
 
@@ -116,6 +117,41 @@ describe("SHAB job", () => {
       failedFirstTime: 1,
       onRadar: ["Beispiel Robotik AG", "Beispiel Wackel AG"],
     });
+  });
+
+  test("records each run's full report for the status check", async () => {
+    const judge = fakeJudge({ byName: { "Beispiel Robotik AG": inLane("robotics", 82, "Rebar robots.") } });
+
+    await run({ "2026-10-16": [exampleEntry] }, "2026-10-16", judge);
+
+    expect(await latestRuns(db)).toMatchObject([
+      { job: "shab", publicationDate: "2026-10-16", report: { fetched: 1, candidates: 1, discarded: 0, failed: 0, errors: [] } },
+    ]);
+  });
+
+  test("records a run that breaks off, with the reason, and passes the error on", async () => {
+    const shabDown = createShabSource({
+      fetchNewRegistrations: () => Promise.reject(new Error("SHAB answered 503")),
+      fetchPublicationXml: () => Promise.reject(new Error("not reached")),
+    });
+    const deps = { db, shab: shabDown, judge: fakeJudge(), criteria, monthlyCapUsd: 10, now: () => new Date("2026-10-17T06:00:00Z") };
+
+    await expect(runShabJob(deps, "2026-10-16")).rejects.toThrow("SHAB answered 503");
+    expect(await latestRuns(db)).toMatchObject([{ job: "shab", publicationDate: "2026-10-16", report: { error: "SHAB answered 503" } }]);
+  });
+
+  test("logs only counts in public, never names or error texts", () => {
+    const summary = publicSummary({
+      fetched: 3,
+      candidates: 1,
+      discarded: 1,
+      waitingForBudget: 0,
+      failed: 1,
+      errors: ["Beispiel Wackel AG: overloaded"],
+      spentUsd: 0.01234,
+    });
+
+    expect(summary).toBe("fetched 3 · candidates 1 · discarded 1 · waiting for budget 0 · failed 1 · spent $0.0123");
   });
 
   describe("monthly budget", () => {

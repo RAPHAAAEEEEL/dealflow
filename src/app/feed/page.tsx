@@ -1,3 +1,4 @@
+import { requireOwner } from "../owner";
 import { getTriage } from "../db";
 import { Nav, SourceNote } from "../nav";
 import { TriageCard } from "./triage-card";
@@ -5,6 +6,7 @@ import { TriageCard } from "./triage-card";
 export const dynamic = "force-dynamic";
 
 export default async function FeedPage() {
+  await requireOwner();
   const queue = await (await getTriage()).queue();
 
   return (

@@ -1,3 +1,4 @@
+import { requireOwner } from "./owner";
 import { createRadar } from "@/radar/radar";
 import { getDb, getTriage } from "./db";
 import { Nav, SourceNote } from "./nav";
@@ -6,6 +7,7 @@ import { StartupTable } from "./startup-table";
 export const dynamic = "force-dynamic";
 
 export default async function AllStartupsPage() {
+  await requireOwner();
   const db = await getDb();
   // The queue runs first so that overdue Candidates show as Expired.
   const waiting = (await (await getTriage()).queue()).length;

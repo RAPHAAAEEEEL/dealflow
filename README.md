@@ -48,8 +48,8 @@ The reasoning behind these choices is in [docs/adr](docs/adr). The domain vocabu
 |---|---|---|
 | v1 | SHAB screening onto the radar | ✅ built and tested |
 | v1 | Triage with Scorecard and Calls, mobile Feed, sortable table | ✅ built and tested |
-| v1 | Deployment: hosted database, scheduled runs, single login | next |
-| v1 | Second source (#Brandneu news feed), Quick Add, weekly email | planned |
+| v1 | Deployment: Vercel and Neon in Frankfurt, daily SHAB job, GitHub login for the Owner | ✅ built; set up with `scripts/setup-deployment.sh` |
+| v1 | Second source (#Brandneu), Quick Add, weekly email with status check | next |
 | v2 | Newsletter inbox, watchlist and outcomes, track record, per-fund views | planned |
 | v3 | Backtest on 2022–23 cohorts, more sources, learning loops for screening and prediction | planned |
 
@@ -68,6 +68,10 @@ To screen real registrations, copy `.env.example` to `.env.local` and fill in a 
 ```bash
 npm run job:shab -- 2026-10-16
 ```
+
+## Deploying
+
+`scripts/setup-deployment.sh` walks through everything only a human can do: accepting the SHAB terms, a Claude API key, a Neon database, the Vercel project, a GitHub OAuth app. Secrets are typed hidden and go straight to GitHub and Vercel. After that, GitHub Actions screens the previous day's SHAB entries every Tuesday to Saturday morning. The decisions behind the setup are in [docs/adr/0007](docs/adr/0007-deployment-and-public-ci.md).
 
 ## Stack
 

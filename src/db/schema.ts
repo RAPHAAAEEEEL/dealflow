@@ -101,3 +101,14 @@ export const calls = pgTable("calls", {
   rationale: text("rationale").notNull(),
   madeAt: timestamp("made_at", { withTimezone: true }).notNull(),
 });
+
+// One row per job run with its full report, including runs that broke off. Public CI logs show only
+// counts (docs/adr/0007), so the details live here, for the Owner and the weekly status check.
+export const jobRuns = pgTable("job_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  job: text("job").$type<"shab">().notNull(),
+  publicationDate: date("publication_date").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+  report: jsonb("report").notNull(),
+});

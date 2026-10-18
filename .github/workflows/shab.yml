@@ -1,0 +1,43 @@
+name: SHAB job
+
+# Screens the previous day's new Swiss commercial-register entries onto the radar (docs/adr/0007).
+# SHAB publishes Monday to Friday, so the job runs Tuesday to Saturday at 05:30 UTC: 06:30 in
+# Switzerland in winter, 07:30 in summer. A day can also be run by hand, from main only.
+on:
+  schedule:
+    - cron: "30 5 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Publication date (YYYY-MM-DD). Empty means yesterday."
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shab-job
+  cancel-in-progress: false
+
+jobs:
+  screen:
+    # Never against production data from an unmerged branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SHAB_TERMS_ACCEPTED_ON: ${{ vars.SHAB_TERMS_ACCEPTED_ON }}
+      # The date reaches the script as data, never as part of the shell command.
+      PUBLICATION_DATE: ${{ inputs.date }}
+    steps:
+      # Pinned to commits, because this job holds secrets.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The log of a public repo shows counts only; details are stored with the run in the database.
+      - run: npm run job:shab -- "$PUBLICATION_DATE"

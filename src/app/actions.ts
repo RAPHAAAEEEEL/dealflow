@@ -4,12 +4,14 @@ import { revalidatePath } from "next/cache";
 import { TriageError } from "@/triage/triage";
 import { CLAIMS, OWNER_FACTORS, type Claim, type OwnerFactor, type TriageInput } from "@/triage/types";
 import { getTriage } from "./db";
+import { isOwner } from "./owner";
 
 export type DecideState = { error?: string };
 
 // Turns the Triage card's form into a decision. Validation lives in the Triage module; its
 // TriageError messages go back to the card unchanged.
 export async function decide(_: DecideState, form: FormData): Promise<DecideState> {
+  if (!(await isOwner())) return { error: "Only the Owner can do Triage. Sign in again." };
   const startupId = String(form.get("startupId"));
   const decision = String(form.get("decision"));
   const rationale = String(form.get("rationale") ?? "");
