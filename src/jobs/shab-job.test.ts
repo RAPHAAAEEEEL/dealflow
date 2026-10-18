@@ -56,6 +56,7 @@ describe("SHAB job", () => {
           source: "SHAB",
           text: "New registration: Beispiel Robotik AG, Zürich (ZH). Purpose: Entwicklung und Vertrieb von Robotern, die auf Baustellen Bewehrungseisen verlegen. Share capital CHF 100,000.",
         },
+        roundCall: null,
       },
     ]);
   });

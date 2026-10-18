@@ -2,6 +2,7 @@ import { date, doublePrecision, integer, jsonb, pgTable, text, timestamp, unique
 import type { Stage, StartupStatus } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
 import type { Sighting } from "@/sighting";
+import type { Claim, TriageDecision } from "@/triage/types";
 
 // Terms follow CONTEXT.md. Founders' names are never stored (docs/adr/0003). Company names are
 // public register data; Sightings that Screening discards before Claude keep no content at all,
@@ -14,6 +15,7 @@ export const startups = pgTable("startups", {
   secondaryLane: text("secondary_lane").$type<Lane>(),
   stage: text("stage").$type<Stage>().notNull(),
   status: text("status").$type<StartupStatus>().notNull(),
+  statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).notNull().defaultNow(),
   priority: integer("priority").notNull(),
   hq: text("hq").notNull(),
   country: text("country").notNull(),
@@ -70,4 +72,32 @@ export const llmUsage = pgTable("llm_usage", {
   inputTokens: integer("input_tokens").notNull(),
   outputTokens: integer("output_tokens").notNull(),
   costUsd: doublePrecision("cost_usd").notNull(),
+});
+
+// The Owner's Triage decision on a startup, with the Scorecard captured alongside its Calls.
+// Out of Scope decisions have no Scorecard.
+export const triageDecisions = pgTable("triage_decisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  startupId: uuid("startup_id").notNull().unique().references(() => startups.id),
+  decision: text("decision").$type<TriageDecision>().notNull(),
+  rationale: text("rationale"),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
+  teamProblemFit: integer("team_problem_fit"),
+  defensibility: integer("defensibility"),
+  marketTiming: integer("market_timing"),
+  earlyEvidence: integer("early_evidence"),
+  laneFit: integer("lane_fit"),
+  fundability: integer("fundability"),
+  momentum: integer("momentum"),
+});
+
+// Calls never change. A later Call on the same startup and Claim is a Revision (CONTEXT.md).
+export const calls = pgTable("calls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  startupId: uuid("startup_id").notNull().references(() => startups.id),
+  decisionId: uuid("decision_id").references(() => triageDecisions.id),
+  claim: text("claim").$type<Claim>().notNull(),
+  probability: integer("probability").notNull(),
+  rationale: text("rationale").notNull(),
+  madeAt: timestamp("made_at", { withTimezone: true }).notNull(),
 });

@@ -34,7 +34,7 @@ _Avoid_: Phase filter
 
 **Source**:
 A public, permitted origin of Sightings, such as the Swiss commercial register gazette (SHAB), a news feed, a newsletter inbox or Quick Add.
-_Avoid_: Feed, provider, scraper
+_Avoid_: Provider, scraper, feed (the Feed is a view, not a Source)
 
 **Quick Add**:
 A Source the Owner feeds by hand. The Owner pastes a link or text, for example from LinkedIn, and the radar fills in the rest from open sources.
@@ -62,7 +62,7 @@ _Avoid_: Event, update, news
 
 **Timeline**:
 The chronological record of everything about one startup: its Signals, Triage decisions, Calls and Outcomes.
-_Avoid_: History, log, feed
+_Avoid_: History, log, feed (the Feed is a view)
 
 ### Triage and Calls
 
@@ -98,6 +98,10 @@ _Avoid_: Irrelevant, spam, false positive
 The Owner's dated probability that a Claim about a startup comes true, with a one-line rationale and a Scorecard. A Call never changes after it is made.
 _Avoid_: Prediction, bet, forecast, rating
 
+**Round Call**:
+The first Call a startup got on the Claim "raises an Institutional Round within 12 months". Lists show it, because the Track Record counts only the first Call.
+_Avoid_: Score, rating, latest call
+
 **Revision**:
 A later Call on the same startup and Claim. It appears on the Timeline but does not replace the first Call in the Track Record.
 _Avoid_: Update, edit, correction
@@ -121,6 +125,16 @@ _Avoid_: Report, profile, write-up
 **Watchlist**:
 All startups with at least one unresolved Call. The radar checks these for Institutional Rounds.
 _Avoid_: Portfolio, pipeline
+
+### Views
+
+**Feed**:
+The mobile view where the Owner does Triage and sees what is new on the radar.
+_Avoid_: Inbox, stream
+
+**Radar Map**:
+The desktop view that places each startup by Lane (sector) and stage (ring).
+_Avoid_: Dashboard, chart
 
 ### Outcomes and Track Record
 
