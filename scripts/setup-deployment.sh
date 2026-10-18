@@ -241,6 +241,17 @@ ask_secret_until_or_clipboard() {
   printf '  %s✓%s Got it (%s characters, not shown).\n' "$GREEN" "$RESET" "${#value}"
 }
 
+# Asks Anthropic's free token-counting endpoint whether a key works. The key goes to curl through
+# stdin, so it never appears in the process list.
+anthropic_key_works() {
+  local code
+  code="$(printf 'header = "x-api-key: %s"\n' "$1" | curl -s -o /dev/null -w '%{http_code}' --config - \
+    -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' \
+    -d '{"model":"claude-haiku-5-5","messages":[{"role":"user","content":"hi"}]}' \
+    https://api.anthropic.com/v1/messages/count_tokens)"
+  [[ "$code" == 200 ]]
+}
+
 has_github_secret() { gh secret list --json name --jq '.[].name' 2>/dev/null | grep -qx "$1"; }
 
 # Sets a production environment variable on Vercel, value through stdin so it never shows up anywhere.
@@ -295,9 +306,14 @@ stage_3() {
   say "Screening uses Claude Haiku. The key is stored for local runs and as a GitHub secret for the daily job."
   open_url "https://console.anthropic.com/settings/keys"
   note "If the page has moved, open the Claude Console and go to Settings → API keys."
-  step "Create a key, name it 'dealflow', and copy it. An API key starts with sk-ant-api."
-  note "Other Anthropic tokens (sk-ant-usr-…, sk-ant-oat-…) are not API keys and won't work here."
-  ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{60,}$' "That isn't a Claude API key: it starts with sk-ant-api and is about 100 characters long."
+  step "Create a key, name it 'dealflow', and copy it (it starts with sk-ant- and is about 100 characters long)."
+  note "Paste it once: the hidden prompt shows nothing, and pasting twice makes the key unusable."
+  ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key: it starts with sk-ant- and is about 100 characters long."
+  until anthropic_key_works "$ANTHROPIC_API_KEY"; do
+    warn "Anthropic rejects this key. Copy it again from the Console."
+    ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
+  done
+  printf '  %s✓%s Anthropic accepts the key.\n' "$GREEN" "$RESET"
   write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
