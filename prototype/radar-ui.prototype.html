@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dealflow UI Prototype</title>
+<!--
+  PROTOTYPE: throwaway, do not build on this file.
+  Question: what should the radar, the startup profile and Triage look like?
+  Plan: three structurally different variants on one page, switchable via ?variant=A|B|C,
+  the floating bar at the bottom, or the left and right arrow keys.
+    A: Table + drawer. A dense list, the profile in a side drawer, Triage as its own tab.
+    B: Radar map. Lanes as sectors, stages as rings, Triage as a guided walk.
+    C: Feed, mobile-first. What's new comes first, and Triage happens inline in the feed.
+  Every startup, person and fund here is invented. State lives in memory, so a reload resets it.
+  Terms follow CONTEXT.md.
+
+  VERDICT (2026-10-18): combine all three. B is the desktop home and showcase image, C handles
+  mobile Triage, and A's table is the "all startups" view. The decision is recorded in docs/ui.md
+  on main.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#000323; --sky:#a6ddff; --white:#ffffff;
+  --sky-soft:#eaf6ff; --bg:#f5f7fb; --line:#dfe3ec; --muted:#5d6377; --faint:#9aa0b3;
+  --yes:#1d7a52; --no:#a8463d; --void:#8a8fa3; --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Montserrat,system-ui,sans-serif;color:var(--navy);background:var(--bg);font-size:14px;line-height:1.45}
+h1,h2{font-size:16pt;font-weight:700;margin:0}
+h3{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px}
+p{margin:6px 0}
+button{font:inherit;color:inherit;cursor:pointer}
+.proto-banner{background:var(--sky);color:var(--navy);font-size:12px;font-weight:600;text-align:center;padding:4px 12px}
+.btn{border:1px solid var(--navy);background:var(--white);border-radius:999px;padding:6px 14px;font-weight:600;font-size:13px}
+.btn.primary{background:var(--navy);color:var(--white)}
+.btn.sky{background:var(--sky);border-color:var(--sky)}
+.btn.on-dark{background:transparent;color:var(--white);border-color:rgba(255,255,255,.5)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.big{width:100%;padding:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--white);white-space:nowrap}
+.chip.lane{background:var(--sky-soft);border-color:transparent}
+.chip.st-Candidate{border-color:var(--navy)}
+.chip.st-Track{background:var(--sky);border-color:var(--sky)}
+.chip.st-Pass{background:#e8eaf0;border-color:#e8eaf0;color:var(--muted)}
+.chip.st-Expired,.chip.st-Out{border-style:dashed;color:var(--faint)}
+.res-yes{color:var(--yes)} .res-no{color:var(--no)} .res-void{color:var(--void)}
+.muted{color:var(--muted)} .small{font-size:12px}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.row-between{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap}
+.x{border:0;background:none;font-size:26px;line-height:1;color:var(--muted)}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.callrow{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.callp{font-size:20px;font-weight:700}
+.bars .bar{display:grid;grid-template-columns:170px 1fr 18px;align-items:center;gap:10px;font-size:12.5px;margin:5px 0}
+.track{height:8px;background:var(--sky-soft);border-radius:999px;overflow:hidden;display:block}
+.track span{display:block;height:100%;background:var(--navy);border-radius:999px}
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.facts p{margin:4px 0}
+details summary{cursor:pointer;font-weight:600;font-size:13px;margin:10px 0}
+/* Triage form */
+.triage{border-top:1px solid var(--line);margin-top:18px}
+.factors{display:grid;grid-template-columns:1fr 1fr;gap:4px 28px}
+.fr{display:grid;grid-template-columns:1fr 120px 36px;align-items:center;gap:8px;font-size:12.5px}
+.fr.wide{grid-template-columns:1fr 220px 44px;margin:6px 0}
+.fr output,.fr b{text-align:right;font-weight:700}
+input[type=range]{accent-color:var(--navy);width:100%}
+.rationale{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin:10px 0}
+.decide{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.decide.three button{flex:1}
+.triage.compact .factors{grid-template-columns:1fr}
+/* Modals and sheets shared by the Quick Add dialog and variant B */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,3,35,.45);z-index:19}
+.modal{position:fixed;z-index:20;left:50%;top:50%;transform:translate(-50%,-50%);width:min(880px,calc(100% - 32px));max-height:calc(100vh - 48px);overflow:auto;background:#fff;border-radius:16px;padding:24px}
+.modal .x{position:absolute;right:14px;top:10px}
+.modal.qa{width:min(480px,calc(100% - 32px))}
+.modal.qa input{width:100%;font:inherit;padding:11px 14px;border:1px solid var(--line);border-radius:10px;margin:12px 0}
+
+/* A: Table + drawer */
+.a-top{display:flex;align-items:center;gap:20px;background:var(--navy);color:#fff;padding:12px 20px;position:sticky;top:0;z-index:5}
+.brand{font-weight:700;font-size:16pt}
+.a-tabs{display:flex;gap:4px;flex:1}
+.a-tab{background:none;border:0;color:rgba(255,255,255,.72);padding:6px 12px;border-radius:999px;font-weight:600}
+.a-tab.on{background:var(--sky);color:var(--navy)}
+.count{display:inline-block;background:var(--white);color:var(--navy);border-radius:999px;padding:0 6px;font-size:11px;margin-left:4px}
+.a-main{padding:20px;max-width:1200px;margin:0 auto 90px}
+.a-filters{display:flex;flex-wrap:wrap;gap:4px 24px;margin-bottom:12px}
+.fchip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font-size:12.5px;font-weight:600;margin:0 4px 6px 0}
+.fchip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius);box-shadow:0 1px 2px rgba(0,3,35,.06)}
+.a-table{width:100%;border-collapse:collapse;background:#fff}
+.a-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap}
+.a-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.a-table tbody tr{cursor:pointer}
+.a-table tbody tr:hover,.a-table tr.sel{background:var(--sky-soft)}
+.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:320px}
+.dot-new{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--sky);border:2px solid var(--navy);vertical-align:middle}
+.a-backdrop{position:fixed;inset:0;background:rgba(0,3,35,.25);z-index:9}
+.a-drawer{position:fixed;top:0;right:0;bottom:0;width:min(540px,100%);background:#fff;z-index:10;overflow:auto;padding:20px 22px 100px;box-shadow:-8px 0 24px rgba(0,3,35,.15)}
+.drawer-head{display:flex;justify-content:space-between;gap:12px}
+.vtl{list-style:none;padding:0;margin:0 0 0 5px;border-left:2px solid var(--line)}
+.vtl li{position:relative;padding:0 0 14px 16px}
+.vtl li::before{content:"";position:absolute;left:-7px;top:4px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--faint)}
+.vtl li.k-call::before{border-color:var(--navy);background:var(--sky)}
+.vtl li.k-outcome::before{background:var(--navy);border-color:var(--navy)}
+.vtl li.k-triage::before{border-color:var(--navy)}
+.a-triage{display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start}
+.a-queue{list-style:none;padding:0;margin:0;background:#fff;border-radius:var(--radius);overflow:hidden;position:sticky;top:80px}
+.a-queue li{display:grid;grid-template-columns:20px 1fr auto;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.a-queue li.on{background:var(--sky-soft);box-shadow:inset 3px 0 0 var(--navy)}
+.prio{font-weight:700;font-size:13px}
+.a-detail{background:#fff;border-radius:var(--radius);padding:20px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{background:#fff;border-radius:var(--radius);padding:16px}
+.tv{font-size:28px;font-weight:700}
+.tl{font-weight:600}
+.empty{text-align:center;padding:60px 0}
+
+/* B: Radar map */
+.b-top{display:flex;align-items:center;gap:16px;padding:12px 20px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.b-top .brand span{font-weight:500;color:var(--muted)}
+.b-rec{flex:1;text-align:left;border:0;background:var(--sky-soft);border-radius:999px;padding:7px 14px;font-weight:600;font-size:12.5px;min-width:240px}
+.b-body{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:16px 20px 100px;max-width:1300px;margin:0 auto}
+.b-chart{background:var(--navy);border-radius:16px;padding:8px}
+.radar{width:100%;height:auto;display:block;max-height:calc(100vh - 150px)}
+.r-ring,.r-axis{fill:none;stroke:rgba(166,221,255,.28)}
+.r-lane{fill:var(--sky);font-size:15px;font-weight:700}
+.r-stage{fill:rgba(255,255,255,.55);font-size:10.5px;font-weight:600}
+.dot{cursor:pointer}
+.dot .body{fill:var(--navy);stroke:#fff;stroke-width:2}
+.dot.st-Candidate .body{stroke-dasharray:3 2}
+.dot.st-Track .body{fill:var(--sky);stroke:var(--sky)}
+.dot.st-Pass .body{fill:#6b7088;stroke:#6b7088}
+.dot.st-Expired .body,.dot.st-Out .body{fill:none;stroke:#6b7088;stroke-dasharray:2 2}
+.dot text{fill:#fff;font-size:11px;font-weight:600}
+.dot.st-Pass text,.dot.st-Expired text,.dot.st-Out text{fill:rgba(255,255,255,.5)}
+.dot.dim{opacity:.18}
+.dot:hover .body{stroke-width:3.5}
+.pulse{fill:none;stroke:var(--sky);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{from{transform:scale(.6);opacity:1}to{transform:scale(1.5);opacity:0}}
+.cur-ring{fill:none;stroke:#fff;stroke-width:2}
+.b-side{background:#fff;border-radius:16px;padding:16px;align-self:start}
+.b-new{display:flex;justify-content:space-between;width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:8px 0;text-align:left;gap:8px}
+.legend{list-style:none;padding:0;margin:0}
+.legend li{display:flex;align-items:center;gap:8px;margin:6px 0}
+.stepper{display:flex;list-style:none;padding:0;margin:18px 0}
+.stepper li{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--faint);position:relative;padding-top:20px}
+.stepper li span{position:absolute;top:0;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--line);z-index:1}
+.stepper li::after{content:"";position:absolute;top:5px;left:50%;width:100%;height:2px;background:var(--line)}
+.stepper li:last-child::after{display:none}
+.stepper li.done,.stepper li.now{color:var(--navy)}
+.stepper li.done span{background:var(--navy)}
+.stepper li.done::after{background:var(--navy)}
+.stepper li.now span{background:var(--sky);box-shadow:0 0 0 3px var(--navy)}
+.b-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.htl{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x mandatory}
+.hi{flex:0 0 230px;scroll-snap-align:start;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12.5px;border-top:4px solid var(--line)}
+.hi.k-call{border-top-color:var(--sky)}
+.hi.k-outcome{border-top-color:var(--navy)}
+.hi.k-triage{border-top-color:var(--muted)}
+.hl{font-weight:700;margin:2px 0}
+.sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(780px,100%);max-height:64vh;overflow:auto;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -10px 30px rgba(0,3,35,.25);padding:16px 20px 90px;z-index:15}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.calib{width:100%;max-width:380px;display:block}
+.cal-axis{stroke:var(--line)}
+.cal-diag{stroke:var(--faint);stroke-dasharray:4 4}
+.cal-pt{fill:var(--sky);stroke:var(--navy);stroke-width:2}
+.cal-l{font-size:10.5px;fill:var(--muted);font-weight:600}
+
+/* C: Feed, mobile-first */
+.c{max-width:600px;margin:0 auto;padding-bottom:150px}
+.c-top{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--navy);color:#fff;position:sticky;top:0;z-index:5}
+.c-main{padding:12px 16px}
+.c-day{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:20px 0 8px}
+.c-card{display:block;background:#fff;border-radius:14px;padding:14px;margin:0 0 10px;box-shadow:0 1px 2px rgba(0,3,35,.06);cursor:pointer}
+.c-card.cand{border:2px solid var(--navy);cursor:default}
+.c-card.quiet{background:transparent;box-shadow:none;border:1px dashed var(--line)}
+.c-card.outcome{border-left:5px solid var(--navy)}
+.c-kind{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+.c-name{font-size:17px;font-weight:700;cursor:pointer}
+.c-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid var(--line);z-index:6;padding-bottom:env(safe-area-inset-bottom)}
+.c-nav button{flex:1;border:0;background:none;padding:14px 0;font-weight:600;color:var(--muted)}
+.c-nav button.on{color:var(--navy);box-shadow:inset 0 3px 0 var(--navy)}
+.c-nav .count{background:var(--sky)}
+.c-search{width:100%;font:inherit;padding:11px 14px;border:1px solid var(--line);border-radius:12px;margin:4px 0 8px}
+.c-row{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:#fff;border:0;border-radius:12px;padding:12px;margin-bottom:6px}
+.sdot{width:12px;height:12px;border-radius:50%;border:2px solid var(--navy);background:#fff}
+.sdot.st-Track{background:var(--sky);border-color:var(--sky)}
+.sdot.st-Pass{background:#c9ccd8;border-color:#c9ccd8}
+.sdot.st-Candidate{border-style:dashed}
+.c-profile h2{margin-top:14px}
+.story{display:flex;flex-direction:column;gap:8px}
+.story .st{background:#fff;border-radius:12px;padding:12px}
+.story .st.k-call{background:var(--sky-soft)}
+.story .st.k-outcome{background:var(--navy);color:#fff}
+.story .st.k-outcome .muted{color:rgba(255,255,255,.7)}
+.story .st.k-outcome b{color:var(--sky)}
+.c-big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.c-big div{background:#fff;border-radius:14px;padding:14px;font-size:12.5px;font-weight:600}
+.c-big span{display:block;font-size:30px;font-weight:700}
+.cal-row{display:grid;grid-template-columns:86px 1fr 92px;gap:8px;align-items:center;margin:8px 0}
+.cal-bars{display:flex;flex-direction:column;gap:3px}
+.cb{height:7px;border-radius:999px}
+.cb.pred{background:var(--sky)}
+.cb.act{background:var(--navy)}
+
+/* Prototype chrome, deliberately off-brand so it doesn't read as part of the design */
+#switcher{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:6px;background:#111;color:#fff;border-radius:999px;padding:6px;box-shadow:0 6px 24px rgba(0,0,0,.35);font:600 13px system-ui,sans-serif;outline:2px dashed #ffcc00;outline-offset:3px}
+#switcher button{border:0;background:#333;color:#fff;border-radius:999px;width:32px;height:32px;font-size:16px}
+#switcher span{padding:0 10px;white-space:nowrap}
+body[data-variant="C"] #switcher{bottom:76px}
+#toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-120px);background:var(--navy);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;font-weight:600;z-index:60;transition:transform .2s;max-width:calc(100% - 32px);text-align:center}
+#toast.on{transform:translate(-50%,0)}
+
+@media (max-width:760px){
+  .hide-s{display:none}
+  .a-top{flex-wrap:wrap;gap:8px;padding:10px 16px}
+  .a-tabs{order:3;flex-basis:100%}
+  .a-main{padding:12px}
+  .a-triage{grid-template-columns:1fr}
+  .a-queue{position:static;display:flex;overflow-x:auto}
+  .a-queue li{min-width:230px;border-bottom:0;border-right:1px solid var(--line)}
+  .facts,.b-grid,.factors{grid-template-columns:1fr}
+  .fr.wide{grid-template-columns:1fr 120px 44px}
+  .bars .bar{grid-template-columns:125px 1fr 18px}
+  .b-body{grid-template-columns:1fr;padding:12px 12px 100px}
+  .modal{top:auto;bottom:0;transform:translateX(-50%);border-radius:16px 16px 0 0;max-height:88vh;width:100%}
+  .clamp{max-width:none}
+}
+@media (prefers-reduced-motion: reduce){.pulse{animation:none}#toast{transition:none}}
+</style>
+</head>
+<body>
+<div id="banner" class="proto-banner"></div>
+<div id="app"></div>
+<div id="switcher"></div>
+<div id="toast" role="status"></div>
+<script>
+const TODAY = "2026-10-18";
+const LANES = { ROB: "Specialised Robotics", AGT: "Enterprise Agents", MFG: "Deep-Tech Manufacturing" };
+const LANE_SHORT = { ROB: "Robotics", AGT: "Agents", MFG: "Manufacturing" };
+const FACTORS = [["tpf", "Team–Problem Fit"], ["def", "Defensibility"], ["mkt", "Market & Timing"], ["evi", "Early Evidence"], ["fit", "Lane Fit"], ["fun", "Fundability"], ["mom", "Momentum"]];
+const CLAIMS = { R12: "Institutional Round within 12 months", A36: "Series A within 36 months" };
+const STAGES = ["Pre-round", "Pre-seed", "Seed"];
+const VARIANTS = [["A", "Table + drawer"], ["B", "Radar map"], ["C", "Feed, mobile-first"]];
+const sc = (tpf, def, mkt, evi, fit, fun, mom) => ({ tpf, def, mkt, evi, fit, fun, mom });
+
+// Demo data: every name, person and fund is invented.
+const startups = [
+  { id: "c1", name: "Kranlogik", lane: "ROB", hq: "Zürich", country: "CH", stage: "Pre-round", status: "Candidate", priority: 86, firstSeen: "2026-10-09",
+    oneLiner: "Retrofit kit that turns tower cranes into semi-autonomous lifting robots.",
+    team: "2 founders · robotics PhD (ETH Zürich) · 8 years of control engineering at a crane manufacturer",
+    entities: [{ name: "Kranlogik AG", place: "Zürich", registered: "2026-10-09" }], score: sc(4, 3, 4, 2, 5, 3, 2), calls: [],
+    signals: [
+      { date: "2026-10-09", source: "SHAB", text: "New registration: Kranlogik AG, Zürich. Purpose: development and sale of control systems for autonomous construction cranes. Share capital CHF 100,000." },
+      { date: "2026-10-10", source: "Screening", text: "In Lane Specialised Robotics. Stage Rule met: registered a day ago, no round found." } ] },
+  { id: "c2", name: "Prüfpfad AI", lane: "AGT", hq: "München", country: "DE", stage: "Pre-round", status: "Candidate", priority: 78, firstSeen: "2026-10-14",
+    oneLiner: "Agents that run supplier audits on a manufacturer's own quality records.",
+    team: "3 founders · former head of supplier quality at an automotive supplier · 2 ML engineers (TUM)",
+    entities: [], score: sc(4, 4, 3, 2, 5, 3, 1), calls: [],
+    signals: [
+      { date: "2026-10-14", source: "#Brandneu", text: "Brandneu: Prüfpfad AI wants to take the paperwork out of supplier audits (title and link only)." },
+      { date: "2026-10-14", source: "Screening", text: "In Lane Enterprise Agents. No Legal Entity found yet." } ] },
+  { id: "c3", name: "Photonbank", lane: "MFG", hq: "Jena", country: "DE", stage: "Pre-round", status: "Candidate", priority: 74, firstSeen: "2026-10-06",
+    oneLiner: "Wafer-level test station for photonic integrated circuits.",
+    team: "4 founders · 3 PhDs in photonics · spin-off from a Jena research institute",
+    entities: [], score: sc(5, 4, 3, 2, 5, 3, 2), calls: [],
+    signals: [
+      { date: "2026-10-06", source: "Quick Add", text: "Owner pasted a LinkedIn post announcing the spin-off." },
+      { date: "2026-10-07", source: "Screening", text: "Enriched from open sources: website photonbank.example, institute press note. In Lane Deep-Tech Manufacturing." } ] },
+  { id: "c4", name: "Feldhand Robotics", lane: "ROB", hq: "Wien", country: "AT", stage: "Pre-seed", status: "Candidate", priority: 61, firstSeen: "2026-10-02",
+    oneLiner: "Weeding robot for vegetable farms under 50 hectares.",
+    team: "2 founders · agricultural engineering (BOKU Wien) · one from a drone startup",
+    entities: [{ name: "Feldhand Robotics GmbH", place: "Wien", registered: "2025-11-14" }], score: sc(3, 2, 3, 3, 4, 3, 3), calls: [],
+    signals: [
+      { date: "2026-10-02", source: "#Brandneu", text: "Feldhand Robotics raises €350k from business angels. Angels only, so not an Institutional Round." },
+      { date: "2026-10-02", source: "Screening", text: "In Lane Specialised Robotics. Stage Rule met." } ] },
+  { id: "c5", name: "Schichtwerk", lane: "MFG", hq: "Aachen", country: "DE", stage: "Pre-round", status: "Candidate", priority: 57, firstSeen: "2026-09-29",
+    oneLiner: "Process control for metal 3D printing using in-situ acoustic sensing.",
+    team: "2 founders · PhD in laser processing (RWTH Aachen) · ex machine-tool sales",
+    entities: [{ name: "Schichtwerk GmbH", place: "Aachen", registered: null }], score: sc(4, 4, 3, 1, 5, 2, 1), calls: [],
+    signals: [
+      { date: "2026-09-29", source: "Quick Add", text: "Owner pasted a university spin-off page." },
+      { date: "2026-09-30", source: "Screening", text: "In Lane Deep-Tech Manufacturing. Handelsregister single lookup pending." } ] },
+  { id: "c6", name: "Akkordia", lane: "AGT", hq: "Lausanne", country: "CH", stage: "Pre-round", status: "Candidate", priority: 49, firstSeen: "2026-10-12",
+    oneLiner: "Agent that drafts payroll rules from collective labour agreements.",
+    team: "1 founder · former payroll consultant",
+    entities: [{ name: "Akkordia SA", place: "Lausanne", registered: "2026-10-12" }], score: sc(2, 2, 3, 1, 3, 2, 1), calls: [],
+    signals: [
+      { date: "2026-10-12", source: "SHAB", text: "New registration: Akkordia SA, Lausanne. Purpose: software for payroll compliance." },
+      { date: "2026-10-13", source: "Screening", text: "Borderline for Enterprise Agents: no proprietary process data visible." } ] },
+  { id: "t1", name: "Tragwerk Robotics", lane: "ROB", lane2: "MFG", hq: "München", country: "DE", stage: "Pre-seed", status: "Track", statusDate: "2026-07-14", priority: 82, firstSeen: "2026-05-20", shareable: true, memo: true,
+    oneLiner: "Mobile robots that tie and weld rebar cages on construction sites.",
+    team: "3 founders · robotics PhD (TUM) · former site manager · ex industrial-robot software lead",
+    entities: [{ name: "Tragwerk Robotics GmbH", place: "München", registered: "2026-03-02" }], score: sc(5, 4, 4, 3, 5, 4, 4),
+    calls: [
+      { date: "2026-07-14", claim: "R12", p: 65, rationale: "Two paying pilots with general contractors; rebar is the bottleneck on site." },
+      { date: "2026-07-14", claim: "A36", p: 30, rationale: "Hardware-heavy; Series A depends on the unit economics of the second robot." } ],
+    signals: [
+      { date: "2026-05-20", source: "#Brandneu", text: "Brandneu: Tragwerk Robotics automates rebar work." },
+      { date: "2026-07-02", source: "#Brandneu", text: "Tragwerk Robotics wins a construction-industry innovation award." },
+      { date: "2026-09-18", source: "Watchlist check", text: "No Institutional Round found (press, Handelsregister single lookup)." },
+      { date: "2026-10-08", source: "Quick Add", text: "Owner added a job ad: first field-service engineer." } ] },
+  { id: "t2", name: "Dünnfilm Dynamics", lane: "MFG", hq: "Dresden", country: "DE", stage: "Pre-round", status: "Track", statusDate: "2026-08-22", priority: 76, firstSeen: "2026-08-05", memo: true,
+    oneLiner: "Roll-to-roll deposition tool for solid-state battery layers.",
+    team: "3 founders · 2 materials-science PhDs (TU Dresden) · ex equipment maker",
+    entities: [{ name: "Dünnfilm Dynamics GmbH", place: "Dresden", registered: "2026-06-30" }], score: sc(4, 5, 4, 2, 5, 3, 2),
+    calls: [
+      { date: "2026-08-22", claim: "R12", p: 55, rationale: "Deep IP and a clear first customer segment, but tool cost per line is unproven." },
+      { date: "2026-08-22", claim: "A36", p: 25, rationale: "Capital-intensive." } ],
+    signals: [
+      { date: "2026-08-05", source: "#Brandneu", text: "Brandneu: Dünnfilm Dynamics wants to make solid-state cells cheaper." },
+      { date: "2026-08-06", source: "Screening", text: "In Lane Deep-Tech Manufacturing." },
+      { date: "2026-10-11", source: "Watchlist check", text: "No Institutional Round found." } ] },
+  { id: "t3", name: "Prozessmaat", lane: "AGT", hq: "Zürich", country: "CH", stage: "Pre-seed", status: "Track", statusDate: "2026-05-30", priority: 71, firstSeen: "2026-02-11", memo: true,
+    oneLiner: "Agents that run month-end close on a company's own ERP history.",
+    team: "2 founders · ex-controller at a Swiss industrial group · ML engineer (EPFL)",
+    entities: [{ name: "Prozessmaat AG", place: "Zürich", registered: "2026-02-11" }], score: sc(4, 4, 4, 4, 5, 4, 4),
+    calls: [
+      { date: "2026-05-30", claim: "R12", p: 45, rationale: "Strong data moat in theory, no customer yet." },
+      { date: "2026-09-15", claim: "R12", p: 70, revision: true, rationale: "Capital increase plus two named customers." },
+      { date: "2026-05-30", claim: "A36", p: 20, rationale: "Too early to tell." } ],
+    signals: [
+      { date: "2026-02-11", source: "SHAB", text: "New registration: Prozessmaat AG, Zürich. Purpose: software for automated financial closing." },
+      { date: "2026-04-02", source: "Quick Add", text: "Owner pasted a LinkedIn post about the first pilot." },
+      { date: "2026-09-12", source: "SHAB", text: "Mutation: share capital increased from CHF 100,000 to CHF 118,000." } ] },
+  { id: "t4", name: "Nahtsicht", lane: "ROB", hq: "Zürich", country: "CH", stage: "Seed", status: "Track", statusDate: "2025-09-10", priority: 88, firstSeen: "2025-08-28", shareable: true, memo: true,
+    oneLiner: "Vision-guided seam-sealing robot for car body shops.",
+    team: "3 founders · 2 robotics PhDs (ETH Zürich) · ex automotive production lead",
+    entities: [{ name: "Nahtsicht AG", place: "Zürich", registered: "2025-08-27" }], score: sc(5, 4, 4, 3, 5, 4, 4),
+    calls: [
+      { date: "2025-09-10", claim: "R12", p: 80, rationale: "Two OEM pilots in month one; the team has shipped industrial robots before." },
+      { date: "2025-09-10", claim: "A36", p: 35, rationale: "Large market, but OEM sales cycles are slow." } ],
+    outcomes: [{ claim: "R12", result: "yes", date: "2026-04-22", evidence: "€2.1M seed led by Alpenglow Fund (fictional). Press release." }],
+    signals: [
+      { date: "2025-08-28", source: "SHAB", text: "New registration: Nahtsicht AG, Zürich." },
+      { date: "2026-04-22", source: "Press", text: "Nahtsicht raises €2.1M seed led by Alpenglow Fund." },
+      { date: "2026-04-29", source: "SHAB", text: "Mutation: share capital increase, new shareholders." } ] },
+  { id: "t5", name: "Spanwerk Systems", lane: "MFG", hq: "Karlsruhe", country: "DE", stage: "Seed", status: "Track", statusDate: "2025-06-02", priority: 80, firstSeen: "2025-05-12", shareable: true, memo: true,
+    oneLiner: "Adaptive machining cells that learn tool wear from the cutting sound.",
+    team: "2 founders · PhD in production engineering (KIT) · ex machine-tool product manager",
+    entities: [{ name: "Spanwerk Systems GmbH", place: "Karlsruhe", registered: "2025-03-18" }], score: sc(4, 4, 4, 3, 5, 4, 3),
+    calls: [
+      { date: "2025-06-02", claim: "R12", p: 70, rationale: "Clear pain at mid-size machine shops; strong KIT network." },
+      { date: "2025-06-02", claim: "A36", p: 25, rationale: "Unclear how far beyond pilots it scales." } ],
+    outcomes: [{ claim: "R12", result: "yes", date: "2025-12-10", evidence: "€1.4M seed led by Rheinbogen Capital (fictional)." }],
+    signals: [
+      { date: "2025-05-12", source: "#Brandneu", text: "Brandneu: Spanwerk Systems listens to machine tools." },
+      { date: "2025-12-10", source: "Press", text: "Spanwerk Systems raises €1.4M seed." } ] },
+  { id: "t6", name: "Waferweise", lane: "MFG", hq: "Dresden", country: "DE", stage: "Seed", status: "Track", statusDate: "2025-08-01", priority: 70, firstSeen: "2025-07-21",
+    oneLiner: "Inline metrology for wafer bonding.",
+    team: "3 founders · semiconductor process engineers",
+    entities: [{ name: "Waferweise GmbH", place: "Dresden", registered: "2025-02-03" }], score: sc(4, 4, 3, 3, 5, 3, 3),
+    calls: [{ date: "2025-08-01", claim: "R12", p: 55, rationale: "Solid team, crowded niche." }],
+    outcomes: [{ claim: "R12", result: "void", date: "2025-08-19", evidence: "€1.8M seed announced 18 days after the Call, so the round was most likely already closed." }],
+    signals: [
+      { date: "2025-07-21", source: "#Brandneu", text: "Brandneu: Waferweise measures wafer bonds inline." },
+      { date: "2025-08-19", source: "Press", text: "Waferweise announces €1.8M seed." } ] },
+  { id: "t7", name: "Hallenhund Robotics", lane: "ROB", hq: "Aachen", country: "DE", stage: "Pre-seed", status: "Track", statusDate: "2025-03-20", priority: 52, firstSeen: "2025-03-03",
+    oneLiner: "Autonomous inventory-counting robot for warehouses.",
+    team: "2 founders · robotics graduates (RWTH Aachen)",
+    entities: [{ name: "Hallenhund Robotics GmbH", place: "Aachen", registered: "2024-11-05" }], score: sc(3, 2, 3, 3, 4, 3, 2),
+    calls: [
+      { date: "2025-03-20", claim: "R12", p: 60, rationale: "Good demo, early customer interest." },
+      { date: "2025-03-20", claim: "A36", p: 20, rationale: "Crowded market." } ],
+    outcomes: [{ claim: "R12", result: "no", date: "2026-03-20", evidence: "Deadline passed without an Institutional Round (press, register)." }],
+    signals: [
+      { date: "2025-03-03", source: "#Brandneu", text: "Brandneu: Hallenhund counts pallets at night." },
+      { date: "2025-10-14", source: "Press", text: "Hallenhund wins a €150k state grant (a grant, not a round)." },
+      { date: "2026-03-20", source: "Watchlist check", text: "Deadline reached, no Institutional Round found." } ] },
+  { id: "p1", name: "Belegfluss", lane: "AGT", hq: "Wien", country: "AT", stage: "Seed", status: "Pass", statusDate: "2025-04-14", priority: 40, firstSeen: "2025-04-01",
+    reason: "Looks like a wrapper on generic invoice data, with no proprietary process data.",
+    oneLiner: "Agents that code supplier invoices into accounting.",
+    team: "2 founders · former fintech product managers",
+    entities: [{ name: "Belegfluss GmbH", place: "Wien", registered: "2025-01-20" }], score: sc(3, 2, 3, 2, 3, 3, 2),
+    calls: [{ date: "2025-04-14", claim: "R12", p: 25, rationale: "Looks like a wrapper on generic invoice data, with no proprietary process data." }],
+    outcomes: [{ claim: "R12", result: "yes", date: "2025-11-03", evidence: "€900k pre-seed led by Donaukurve Seed (fictional)." }],
+    signals: [
+      { date: "2025-04-01", source: "#Brandneu", text: "Brandneu: Belegfluss automates invoice booking." },
+      { date: "2025-11-03", source: "Press", text: "Belegfluss raises €900k pre-seed." } ] },
+  { id: "p2", name: "Taktgeber AI", lane: "AGT", hq: "Berlin", country: "DE", stage: "Pre-round", status: "Pass", statusDate: "2025-05-05", priority: 30, firstSeen: "2025-04-22",
+    reason: "Single founder, no access to factory data.",
+    oneLiner: "Shift-planning agent for factories.",
+    team: "1 founder · student, no industry experience",
+    entities: [], score: sc(2, 2, 3, 1, 4, 2, 1),
+    calls: [{ date: "2025-05-05", claim: "R12", p: 15, rationale: "Single founder, no access to factory data." }],
+    outcomes: [{ claim: "R12", result: "no", date: "2026-05-05", evidence: "Deadline passed without a round." }],
+    signals: [{ date: "2025-04-22", source: "#Brandneu", text: "Brandneu: Taktgeber AI plans factory shifts." }] },
+  { id: "p3", name: "Lagerlicht", lane: "ROB", hq: "Hamburg", country: "DE", stage: "Pre-round", status: "Pass", statusDate: "2025-10-02", priority: 35, firstSeen: "2025-09-15",
+    reason: "Nice tech, but three better-funded competitors.",
+    oneLiner: "Drone-based stock-taking for high-bay warehouses.",
+    team: "2 founders · aerospace engineering students",
+    entities: [{ name: "Lagerlicht UG", place: "Hamburg", registered: "2025-09-01" }], score: sc(3, 2, 3, 2, 4, 2, 1),
+    calls: [{ date: "2025-10-02", claim: "R12", p: 35, rationale: "Nice tech, but three better-funded competitors." }],
+    outcomes: [{ claim: "R12", result: "no", date: "2026-10-02", evidence: "Deadline passed without an Institutional Round." }],
+    signals: [
+      { date: "2025-09-15", source: "Quick Add", text: "Owner pasted a hackathon results page." },
+      { date: "2026-10-02", source: "Watchlist check", text: "Deadline reached, no Institutional Round found." } ] },
+  { id: "p4", name: "Lötstelle Labs", lane: "MFG", hq: "Graz", country: "AT", stage: "Pre-round", status: "Pass", statusDate: "2026-09-08", priority: 44, firstSeen: "2026-08-30",
+    reason: "Component supplier, hard to become venture-scale.",
+    oneLiner: "Laser soldering heads for power electronics.",
+    team: "2 founders · electronics (TU Graz)",
+    entities: [{ name: "Lötstelle Labs GmbH", place: "Graz", registered: "2026-08-12" }], score: sc(3, 3, 2, 2, 4, 2, 1),
+    calls: [{ date: "2026-09-08", claim: "R12", p: 20, rationale: "Component supplier, hard to become venture-scale." }],
+    signals: [{ date: "2026-08-30", source: "#Brandneu", text: "Brandneu: Lötstelle Labs solders with light." }] },
+  { id: "e1", name: "Greifbar Systems", lane: "ROB", hq: "Bern", country: "CH", stage: "Pre-round", status: "Expired", statusDate: "2026-09-20", priority: 38, firstSeen: "2026-08-23",
+    oneLiner: "Soft grippers for food packaging lines.", team: "Not enriched.",
+    entities: [{ name: "Greifbar Systems GmbH", place: "Bern", registered: "2026-08-21" }], score: null, calls: [],
+    signals: [{ date: "2026-08-23", source: "SHAB", text: "New registration: Greifbar Systems GmbH, Bern. Purpose: grippers for packaging machines." }] },
+  { id: "o1", name: "Klebstelle", lane: "MFG", hq: "Basel", country: "CH", stage: "Pre-round", status: "Out of Scope", statusDate: "2026-09-27", priority: 22, firstSeen: "2026-09-24",
+    reason: "Retailer, not a deep-tech manufacturer. Fed to the Screening Proposals.",
+    oneLiner: "Online shop for adhesive tapes.", team: "Not enriched.",
+    entities: [{ name: "Klebstelle GmbH", place: "Basel", registered: "2026-09-23" }], score: null, calls: [],
+    signals: [{ date: "2026-09-24", source: "SHAB", text: "New registration: Klebstelle GmbH, Basel. Purpose: trade in industrial adhesives." }] },
+];
+
+const S = { variant: initialVariant(), tabA: "radar", fLane: "all", fStatus: "active", sortKey: "priority", sortDir: -1, openId: null, triageId: null,
+  showArchived: false, bTriage: false, bCur: null, recordOpen: false, tabC: "feed", cExpand: null, search: "", quickAdd: false };
+
+function initialVariant(){ const v = new URLSearchParams(location.search).get("variant"); return ["A", "B", "C"].includes(v) ? v : "A"; }
+
+// Helpers
+const byId = id => startups.find(s => s.id === id);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmtShort = d => new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+const days = (a, b) => Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 864e5);
+const pct = x => x == null || isNaN(x) ? "—" : Math.round(x * 100) + "%";
+const candidates = () => startups.filter(s => s.status === "Candidate").sort((a, b) => b.priority - a.priority).slice(0, 15);
+const callsFor = (s, claim) => s.calls.filter(c => c.claim === claim).sort((a, b) => a.date.localeCompare(b.date));
+const firstCall = (s, claim) => callsFor(s, claim)[0];
+const latestCall = (s, claim) => { const c = callsFor(s, claim); return c[c.length - 1]; };
+const outcomeOf = (s, claim) => (s.outcomes || []).find(o => o.claim === claim);
+const lastSignal = s => [...s.signals].sort((a, b) => b.date.localeCompare(a.date))[0];
+const isNew = s => s.signals.some(g => days(g.date, TODAY) <= 7);
+const isArchived = s => s.status === "Expired" || s.status === "Out of Scope";
+const stCls = st => "st-" + st.split(" ")[0];
+function addMonths(d, m){ const x = new Date(d + "T12:00:00"); x.setMonth(x.getMonth() + m); return x.toISOString().slice(0, 10); }
+
+function record(){
+  const resolved = [];
+  startups.forEach(s => { const c = firstCall(s, "R12"), o = outcomeOf(s, "R12"); if (c && o) resolved.push({ s, c, o }); });
+  resolved.sort((a, b) => b.o.date.localeCompare(a.o.date));
+  const scored = resolved.filter(r => r.o.result !== "void");
+  const confident = scored.filter(r => r.c.p >= 50);
+  const hitRate = confident.length ? confident.filter(r => r.o.result === "yes").length / confident.length : null;
+  const brier = scored.length ? scored.reduce((sum, r) => sum + Math.pow(r.c.p / 100 - (r.o.result === "yes" ? 1 : 0), 2), 0) / scored.length : null;
+  const leads = scored.filter(r => r.o.result === "yes").map(r => {
+    const f = callsFor(r.s, "R12").find(c => c.p >= 50); return f ? days(f.date, r.o.date) : null;
+  }).filter(x => x != null).sort((a, b) => a - b);
+  const medianLead = leads.length ? (leads.length % 2 ? leads[(leads.length - 1) / 2] : Math.round((leads[leads.length / 2 - 1] + leads[leads.length / 2]) / 2)) : null;
+  const anti = scored.filter(r => r.s.status === "Pass" && r.o.result === "yes");
+  const buckets = [[0, 30, "0–29%"], [30, 60, "30–59%"], [60, 101, "60–100%"]].map(([lo, hi, label]) => {
+    const rs = scored.filter(r => r.c.p >= lo && r.c.p < hi);
+    return { label, n: rs.length, predicted: rs.length ? rs.reduce((a, r) => a + r.c.p, 0) / rs.length / 100 : null,
+      actual: rs.length ? rs.filter(r => r.o.result === "yes").length / rs.length : null };
+  });
+  const voids = resolved.filter(r => r.o.result === "void");
+  const open = startups.filter(s => firstCall(s, "R12") && !outcomeOf(s, "R12")).length;
+  return { resolved, scored, hitRate, brier, medianLead, anti, buckets, voids, open };
+}
+
+function timeline(s){
+  const items = s.signals.map(g => ({ date: g.date, kind: "signal", label: g.source, text: g.text }));
+  s.calls.forEach(c => items.push({ date: c.date, kind: "call", label: c.revision ? "Revision" : "Call", text: `${CLAIMS[c.claim]}: <b>${c.p}%</b>`, sub: c.rationale }));
+  if (["Track", "Pass", "Out of Scope"].includes(s.status)) items.push({ date: s.statusDate, kind: "triage", label: "Triage", text: `Decision: <b>${s.status}</b>`, sub: s.status === "Track" ? "" : (s.reason || "") });
+  if (s.status === "Expired") items.push({ date: s.statusDate, kind: "triage", label: "Expired", text: "Waited four weeks without Triage. Archived, no Call." });
+  (s.outcomes || []).forEach(o => items.push({ date: o.date, kind: "outcome", label: "Outcome", text: `${CLAIMS[o.claim]}: <b class="res-${o.result}">${o.result.toUpperCase()}</b>`, sub: o.evidence }));
+  const rank = { outcome: 0, call: 1, triage: 2, signal: 3 };
+  return items.sort((a, b) => b.date.localeCompare(a.date) || rank[a.kind] - rank[b.kind]);
+}
+
+// Small shared pieces. Each variant owns its own layout.
+function badges(s){
+  return `<span class="chip lane">${LANES[s.lane]}</span>${s.lane2 ? `<span class="chip lane">+ ${LANES[s.lane2]}</span>` : ""}<span class="chip">${s.stage}</span><span class="chip">${s.hq}, ${s.country}</span><span class="chip ${stCls(s.status)}">${s.status}</span>`;
+}
+function callsBlock(s){
+  if (!s.calls.length) return `<p class="muted small">No Call yet${s.status === "Candidate" ? ". Waiting for Triage." : "."}</p>`;
+  return ["R12", "A36"].map(claim => {
+    const cs = callsFor(s, claim); if (!cs.length) return "";
+    const o = outcomeOf(s, claim), first = cs[0], revs = cs.slice(1);
+    let res = `<span class="muted small">open · deadline ${fmt(addMonths(first.date, claim === "R12" ? 12 : 36))}</span>`;
+    if (o) res = `<b class="res-${o.result}">${o.result.toUpperCase()}</b>${s.status === "Pass" && o.result === "yes" ? ' <span class="chip">Anti-Portfolio</span>' : ""}`;
+    return `<div class="callrow"><div><div class="small muted">${CLAIMS[claim]}</div><div class="callp">${first.p}%${revs.map(r => ` <span class="muted">→ ${r.p}%</span>`).join("")}</div><div class="small muted">first Call ${fmt(first.date)}${revs.length ? " · Revisions don't count in the Track Record" : ""}</div></div><div>${res}</div></div>`;
+  }).join("");
+}
+function scoreBars(s){
+  if (!s.score) return '<p class="muted small">No Scorecard.</p>';
+  return `<div class="bars">${FACTORS.map(([k, l]) => `<div class="bar"><span>${l}${k === "mom" ? ' <i class="muted">(computed)</i>' : ""}</span><span class="track"><span style="width:${s.score[k] * 20}%"></span></span><b>${s.score[k]}</b></div>`).join("")}</div>${s.status === "Candidate" ? `<p class="small muted">Claude's draft. The Owner sets the final values in Triage.</p>` : ""}`;
+}
+function facts(s){
+  return `<div class="facts"><div><h3>Team Profile</h3><p>${s.team}</p></div><div><h3>Legal Entities</h3>${s.entities.length ? s.entities.map(e => `<p>${e.name} · ${e.place} · registered ${e.registered ? fmt(e.registered) : "date unknown"}</p>`).join("") : '<p class="muted">None found yet. The team may still be in creation.</p>'}</div></div>`;
+}
+function shareToggle(s){
+  if (s.status !== "Track") return `<span class="small muted">${s.status === "Pass" ? "Passed startups are never shared." : ""}</span>`;
+  return `<label class="toggle"><input type="checkbox" data-act="share" data-id="${s.id}" ${s.shareable ? "checked" : ""}> Shareable in Fund Views</label>`;
+}
+function callFields(){
+  return `<h3>Call</h3>
+    <div class="fr wide"><span>${CLAIMS.R12}</span><input type="range" min="0" max="100" step="5" name="r12" value="50" data-suffix="%"><output>50%</output></div>
+    <div class="fr wide"><span>${CLAIMS.A36}</span><input type="range" min="0" max="100" step="5" name="a36" value="20" data-suffix="%"><output>20%</output></div>
+    <input class="rationale" name="rationale" placeholder="One-line rationale (needed for Track and Pass)" autocomplete="off">`;
+}
+function factorFields(s){
+  const v = s.score || sc(3, 3, 3, 3, 3, 3, 1);
+  return `<div class="factors">${FACTORS.map(([k, l]) => k === "mom"
+    ? `<div class="fr"><span>${l}</span><span class="muted small">computed</span><b>${v.mom}</b></div>`
+    : `<div class="fr"><span>${l}</span><input type="range" min="1" max="5" step="1" name="${k}" value="${v[k]}"><output>${v[k]}</output></div>`).join("")}</div>`;
+}
+function triageForm(s, compact){
+  return `<form class="triage ${compact ? "compact" : ""}" data-id="${s.id}" onsubmit="return false">
+    ${compact ? `<details><summary>Scorecard · Claude's draft, adjust if needed</summary>${factorFields(s)}</details>` : `<h3>Scorecard · Claude's draft, adjust</h3>${factorFields(s)}`}
+    ${callFields()}
+    <div class="decide">
+      <button type="button" class="btn sky" data-act="decide" data-decision="Track">Track</button>
+      <button type="button" class="btn" data-act="decide" data-decision="Pass">Pass</button>
+      <button type="button" class="btn" data-act="decide" data-decision="Out of Scope" title="Screening was wrong. No Call.">Out of Scope</button>
+    </div>
+    <p class="small muted">Track and Pass record both Calls. Out of Scope records no Call and feeds the Screening Proposals.</p>
+  </form>`;
+}
+
+// A: Table + drawer
+function VariantA(){
+  const tab = (k, label) => `<button class="a-tab ${S.tabA === k ? "on" : ""}" data-act="tabA" data-k="${k}">${label}</button>`;
+  const body = S.tabA === "radar" ? aRadar() : S.tabA === "triage" ? aTriage() : aRecord();
+  const s = S.openId && byId(S.openId);
+  return `<div class="a">
+    <header class="a-top"><div class="brand">Dealflow</div>
+      <nav class="a-tabs">${tab("radar", "Radar")}${tab("triage", `Triage <span class="count">${candidates().length}</span>`)}${tab("record", "Track Record")}</nav>
+      <button class="btn on-dark" data-act="qa-open">+ Quick Add</button></header>
+    <main class="a-main">${body}</main>
+    ${s && S.tabA === "radar" ? `<div class="a-backdrop" data-act="close"></div><aside class="a-drawer">${aProfile(s)}</aside>` : ""}
+  </div>`;
+}
+function aRadar(){
+  let rows = startups.filter(s => S.fLane === "all" || s.lane === S.fLane)
+    .filter(s => S.fStatus === "active" ? !isArchived(s) : S.fStatus === "archived" ? isArchived(s) : s.status === S.fStatus);
+  const key = { priority: s => s.status === "Candidate" ? 1000 + s.priority : s.priority, name: s => s.name, lane: s => s.lane, stage: s => STAGES.indexOf(s.stage),
+    status: s => s.status, signal: s => lastSignal(s).date, call: s => (latestCall(s, "R12") || { p: -1 }).p };
+  rows.sort((a, b) => { const x = key[S.sortKey](a), y = key[S.sortKey](b); return (x > y ? 1 : x < y ? -1 : 0) * S.sortDir; });
+  const chip = (attr, val, label) => `<button class="fchip ${S[attr] === val ? "on" : ""}" data-act="filter" data-attr="${attr}" data-val="${val}">${label}</button>`;
+  const th = (k, label, cls = "") => `<th class="${cls}" data-act="sort" data-k="${k}">${label}${S.sortKey === k ? (S.sortDir < 0 ? " ↓" : " ↑") : ""}</th>`;
+  return `<div class="a-filters">
+      <div>${chip("fLane", "all", "All Lanes")}${Object.keys(LANES).map(k => chip("fLane", k, LANE_SHORT[k])).join("")}</div>
+      <div>${chip("fStatus", "active", "Active")}${["Candidate", "Track", "Pass"].map(st => chip("fStatus", st, st)).join("")}${chip("fStatus", "archived", "Expired / Out of Scope")}</div>
+    </div>
+    <div class="tbl-wrap"><table class="a-table"><thead><tr>${th("name", "Startup")}${th("lane", "Lane")}${th("stage", "Stage", "hide-s")}${th("status", "Status")}${th("signal", "Latest Signal", "hide-s")}${th("call", "Round Call")}${th("priority", "Priority", "hide-s")}</tr></thead>
+    <tbody>${rows.map(s => {
+      const g = lastSignal(s), c1 = firstCall(s, "R12"), cl = latestCall(s, "R12"), o = outcomeOf(s, "R12");
+      return `<tr data-act="open" data-id="${s.id}" class="${S.openId === s.id ? "sel" : ""}">
+        <td><b>${s.name}</b>${isNew(s) ? ' <span class="dot-new" title="New Signal in the last 7 days"></span>' : ""}<div class="small muted">${s.oneLiner}</div></td>
+        <td><span class="chip lane">${LANE_SHORT[s.lane]}</span></td>
+        <td class="hide-s" style="white-space:nowrap">${s.stage}</td>
+        <td><span class="chip ${stCls(s.status)}">${s.status}</span></td>
+        <td class="hide-s small">${fmtShort(g.date)} · <b>${g.source}</b><div class="muted clamp">${g.text}</div></td>
+        <td>${c1 ? `${c1.p}%${cl !== c1 ? ` <span class="muted">→ ${cl.p}%</span>` : ""}${o ? ` <b class="res-${o.result} small">${o.result.toUpperCase()}</b>` : ""}` : '<span class="muted">—</span>'}</td>
+        <td class="hide-s">${s.status === "Candidate" ? s.priority : '<span class="muted">—</span>'}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    <p class="small muted">${rows.length} startups · click a row for its profile</p>`;
+}
+function aProfile(s){
+  return `<div class="drawer-head"><div><h2>${s.name}</h2><p class="muted">${s.oneLiner}</p></div><button class="x" data-act="close" aria-label="Close">×</button></div>
+    <div class="badges">${badges(s)}</div>
+    <div class="row-between">${shareToggle(s)}${s.memo ? '<button class="btn" disabled title="Not part of the prototype">Open Memo</button>' : ""}</div>
+    ${s.status === "Candidate" ? `<button class="btn primary" data-act="to-triage" data-id="${s.id}">Triage this Candidate</button>` : ""}
+    <h3>Calls</h3>${callsBlock(s)}
+    <h3>Scorecard</h3>${scoreBars(s)}
+    ${facts(s)}
+    <h3>Timeline</h3>
+    <ol class="vtl">${timeline(s).map(i => `<li class="k-${i.kind}"><div class="small muted">${fmt(i.date)} · <b>${i.label}</b></div><div>${i.text}</div>${i.sub ? `<div class="small muted">${i.sub}</div>` : ""}</li>`).join("")}</ol>`;
+}
+function aTriage(){
+  const list = candidates();
+  if (!list.length) return '<div class="empty"><h2>Triage done</h2><p class="muted">No Candidates left this week.</p></div>';
+  const picked = byId(S.triageId);
+  const cur = picked && picked.status === "Candidate" ? picked : list[0];
+  return `<div class="a-triage">
+    <ol class="a-queue">${list.map((s, i) => `<li class="${s.id === cur.id ? "on" : ""}" data-act="pick" data-id="${s.id}"><span class="muted small">${i + 1}</span><div><b>${s.name}</b><div class="small muted">${LANE_SHORT[s.lane]} · ${s.stage} · seen ${fmtShort(s.firstSeen)}</div></div><span class="prio" title="Priority">${s.priority}</span></li>`).join("")}</ol>
+    <section class="a-detail">
+      <div class="badges">${badges(cur)}</div>
+      <h2>${cur.name}</h2><p>${cur.oneLiner}</p>
+      <h3>Why it's here</h3>${[...cur.signals].sort((a, b) => b.date.localeCompare(a.date)).map(g => `<p class="small"><b>${g.source}</b> · ${fmt(g.date)}<br>${g.text}</p>`).join("")}
+      ${facts(cur)}
+      ${triageForm(cur, false)}
+    </section></div>`;
+}
+function aRecord(){
+  const r = record();
+  const tile = (v, l, sub) => `<div class="tile"><div class="tv">${v}</div><div class="tl">${l}</div><div class="small muted">${sub}</div></div>`;
+  return `<div class="tiles">
+      ${tile(r.scored.length, "Scored Round Calls", `${r.voids.length} Void · ${r.open} still open`)}
+      ${tile(pct(r.hitRate), "Hit rate", "Calls of 50% or more that came true")}
+      ${tile(r.brier != null ? r.brier.toFixed(2) : "—", "Brier score", "0 is perfect · 0.25 is a coin flip")}
+      ${tile(r.medianLead != null ? r.medianLead + " d" : "—", "Median Lead Time", "first Call ≥ 50% → announcement")}
+      ${tile(r.anti.length, "Anti-Portfolio", "Passed, then raised")}</div>
+    <h3>Calibration</h3>
+    <div class="tbl-wrap"><table class="a-table"><thead><tr><th>Your probability</th><th>Calls</th><th>Avg. predicted</th><th>Came true</th></tr></thead><tbody>${r.buckets.map(b => `<tr><td>${b.label}</td><td>${b.n}</td><td>${pct(b.predicted)}</td><td>${pct(b.actual)}</td></tr>`).join("")}</tbody></table></div>
+    <h3>Resolved Round Calls</h3>
+    <div class="tbl-wrap"><table class="a-table"><thead><tr><th>Startup</th><th>First Call</th><th>Outcome</th><th class="hide-s">Evidence</th></tr></thead><tbody>${r.resolved.map(x => `<tr data-act="open-from-record" data-id="${x.s.id}"><td><b>${x.s.name}</b> <span class="chip ${stCls(x.s.status)}">${x.s.status}</span></td><td>${x.c.p}% · ${fmt(x.c.date)}</td><td><b class="res-${x.o.result}">${x.o.result.toUpperCase()}</b> · ${fmt(x.o.date)}</td><td class="hide-s small muted">${x.o.evidence}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+// B: Radar map
+const SECTORS = { ROB: -90, AGT: 30, MFG: 150 }; // start angle of each 120° sector
+// New startups enter at the rim and move inward as they get closer to their round.
+// Pre-round gets the widest ring because that's where most of the radar lives.
+const RINGS = { "Pre-round": [185, 290], "Pre-seed": [95, 185], "Seed": [20, 95] };
+function hash(str, salt){ let h = 2166136261 ^ salt; for (const ch of str){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; }
+function layout(vis){
+  const xy = p => [Math.cos(p.ang * Math.PI / 180) * p.r, Math.sin(p.ang * Math.PI / 180) * p.r];
+  const clamp = p => {
+    const rel = Math.min(112, Math.max(8, ((p.ang - p.a0) % 360 + 360) % 360));
+    p.ang = p.a0 + rel; p.r = Math.min(p.ring[1] - 14, Math.max(p.ring[0] + 14, p.r));
+  };
+  const P = vis.map(s => { const ring = RINGS[s.stage]; return { s, a0: SECTORS[s.lane], ring, ang: SECTORS[s.lane] + 10 + hash(s.id, 1) * 100, r: ring[0] + 18 + hash(s.id, 2) * (ring[1] - ring[0] - 36) }; });
+  // Nudge dots apart so dots and their name labels don't collide, keeping each inside its sector and ring.
+  // Labels are wide and short, so horizontal distance counts for less than vertical distance.
+  for (let it = 0; it < 120; it++){
+    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++){
+      const p = P[i], q = P[j];
+      const [px, py] = xy(p), [qx, qy] = xy(q), dx = (qx - px) / 4, dy = qy - py, d = Math.hypot(dx, dy) || 1;
+      if (d >= 20) continue;
+      const k = (20 - d) / 2 / d;
+      [[p, px - dx * 4 * k, py - dy * k], [q, qx + dx * 4 * k, qy + dy * k]].forEach(([o, x, y]) => { o.r = Math.hypot(x, y); o.ang = Math.atan2(y, x) * 180 / Math.PI; });
+    }
+    P.forEach(clamp);
+  }
+  return P.map(p => { const [x, y] = xy(p); return { s: p.s, x, y }; });
+}
+function bCurrent(){ const list = candidates(); const p = byId(S.bCur); return p && p.status === "Candidate" ? p : list[0]; }
+function radarSvg(){
+  const vis = startups.filter(s => S.showArchived || !isArchived(s));
+  const cur = S.bTriage ? bCurrent() : null;
+  const axes = [-90, 30, 150].map(a => { const r = a * Math.PI / 180; return `<line x1="0" y1="0" x2="${(Math.cos(r) * 285).toFixed(1)}" y2="${(Math.sin(r) * 285).toFixed(1)}" class="r-axis"/>`; }).join("");
+  const rings = Object.values(RINGS).map(([, o]) => `<circle r="${o}" class="r-ring"/>`).join("");
+  const stageLabels = STAGES.map(st => `<text x="6" y="${-(RINGS[st][1] - 12)}" class="r-stage">${st}</text>`).join("");
+  // Lane titles sit in the corners outside the circle so they never cover a dot.
+  const laneLabels = `<text x="360" y="-305" class="r-lane" text-anchor="end">${LANES.ROB} ↘</text>
+    <text x="-360" y="-305" class="r-lane" text-anchor="start">↙ ${LANES.MFG}</text>
+    <text x="0" y="325" class="r-lane" text-anchor="middle">↑ ${LANES.AGT}</text>`;
+  const dots = layout(vis).map(({ s, x, y }) => {
+    const dim = S.bTriage && s.status !== "Candidate", isCur = cur && cur.id === s.id, left = x < -40;
+    return `<g class="dot ${stCls(s.status)} ${dim ? "dim" : ""}" data-act="open" data-id="${s.id}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+      <title>${s.name} · ${s.stage} · ${s.status}</title>
+      ${isNew(s) ? '<circle r="15" class="pulse"/>' : ""}${isCur ? '<circle r="17" class="cur-ring"/>' : ""}<circle r="8" class="body"/><text x="${left ? -13 : 13}" y="4" text-anchor="${left ? "end" : "start"}">${s.name}</text></g>`;
+  }).join("");
+  return `<svg viewBox="-370 -330 740 665" class="radar" role="img" aria-label="Startups by Lane (sectors) and stage (rings)">${rings}${axes}${stageLabels}${laneLabels}${dots}</svg>`;
+}
+function VariantB(){
+  const r = record(), n = candidates().length;
+  const recent = startups.filter(s => isNew(s) && !isArchived(s));
+  const leg = (style, label) => `<li><svg width="18" height="18" viewBox="-9 -9 18 18"><circle r="6" style="${style}"/></svg>${label}</li>`;
+  return `<div class="b">
+    <header class="b-top"><div class="brand">Dealflow <span>Radar</span></div>
+      <button class="b-rec" data-act="b-record">Track Record · ${r.scored.length} scored · ${pct(r.hitRate)} hit rate · Brier ${r.brier != null ? r.brier.toFixed(2) : "—"} · Lead Time ${r.medianLead ?? "—"} d →</button>
+      <button class="btn" data-act="qa-open">+ Quick Add</button></header>
+    <div class="b-body">
+      <div class="b-chart">${radarSvg()}</div>
+      <aside class="b-side">
+        <button class="btn primary big" data-act="b-triage" ${n || S.bTriage ? "" : "disabled"}>${S.bTriage ? "Exit Triage" : `Start Triage · ${n} Candidates`}</button>
+        <h3>New Signals this week</h3>
+        ${recent.length ? recent.map(s => { const g = lastSignal(s); return `<button class="b-new" data-act="open" data-id="${s.id}"><b>${s.name}</b><span class="small muted">${fmtShort(g.date)} · ${g.source}</span></button>`; }).join("") : '<p class="muted small">Nothing new.</p>'}
+        <h3>How to read it</h3>
+        <ul class="legend small">
+          ${leg("fill:#fff;stroke:#000323;stroke-width:2;stroke-dasharray:3 2", "Candidate")}
+          ${leg("fill:#a6ddff;stroke:#000323;stroke-width:1", "Track")}
+          ${leg("fill:#6b7088", "Pass")}
+          ${leg("fill:none;stroke:#a6ddff;stroke-width:2", "New Signal in the last 7 days (pulses)")}
+          <li>Sectors are Lanes. Rings are stages: new startups appear at the rim (Pre-round) and move inward as they get closer to their round.</li>
+        </ul>
+        <p><label class="small"><input type="checkbox" data-act="b-archived" ${S.showArchived ? "checked" : ""}> Show Expired and Out of Scope</label></p>
+      </aside>
+    </div>
+    ${S.openId && !S.bTriage ? bProfile(byId(S.openId)) : ""}
+    ${S.bTriage ? bSheet() : ""}
+    ${S.recordOpen ? bRecord(r) : ""}
+  </div>`;
+}
+function bProfile(s){
+  const si = STAGES.indexOf(s.stage);
+  const steps = [...STAGES, "Series A"].map((st, i) => `<li class="${i < si ? "done" : i === si ? "now" : ""}"><span></span>${st}</li>`).join("");
+  return `<div class="modal-backdrop" data-act="close"></div><div class="modal">
+    <button class="x" data-act="close" aria-label="Close">×</button>
+    <div class="small muted">${LANES[s.lane]}${s.lane2 ? " + " + LANES[s.lane2] : ""} · ${s.hq}, ${s.country}</div>
+    <h2>${s.name} <span class="chip ${stCls(s.status)}">${s.status}</span></h2>
+    <p>${s.oneLiner}</p>
+    <ol class="stepper">${steps}</ol>
+    <div class="b-grid"><div><h3>Calls</h3>${callsBlock(s)}</div><div><h3>Scorecard</h3>${scoreBars(s)}</div></div>
+    <h3>Timeline · oldest to newest, scroll →</h3>
+    <div class="htl">${timeline(s).reverse().map(i => `<div class="hi k-${i.kind}"><div class="small muted">${fmt(i.date)}</div><div class="hl">${i.label}</div><div>${i.text}</div>${i.sub ? `<div class="small muted">${i.sub}</div>` : ""}</div>`).join("")}</div>
+    ${facts(s)}
+    <div class="row-between">${shareToggle(s)}${s.status === "Candidate" ? `<button class="btn primary" data-act="b-triage-this" data-id="${s.id}">Triage now</button>` : ""}</div>
+  </div>`;
+}
+function bSheet(){
+  const list = candidates(); if (!list.length) return "";
+  const cur = bCurrent(), g = lastSignal(cur);
+  return `<div class="sheet">
+    <div class="sheet-head"><span class="small muted">Candidate ${list.indexOf(cur) + 1} of ${list.length} · Priority ${cur.priority} · tap another dashed dot to jump</span>
+      <div><button class="btn" data-act="b-skip">Skip →</button> <button class="btn" data-act="b-triage">Exit</button></div></div>
+    <h2>${cur.name}</h2><p class="small">${cur.oneLiner}</p>
+    <p class="small muted"><b>${g.source}</b> · ${g.text}</p>
+    <p class="small"><b>Team:</b> ${cur.team}</p>
+    ${triageForm(cur, true)}
+  </div>`;
+}
+function bRecord(r){
+  const pts = r.buckets.filter(b => b.n).map(b => {
+    const x = 30 + b.predicted * 200, y = 220 - b.actual * 200;
+    return `<circle cx="${x}" cy="${y}" r="${4 + b.n * 3}" class="cal-pt"/><text x="${x + 10 + b.n * 3}" y="${y + 4}" class="cal-l">${b.label} (${b.n})</text>`;
+  }).join("");
+  return `<div class="modal-backdrop" data-act="rec-close"></div><div class="modal">
+    <button class="x" data-act="rec-close" aria-label="Close">×</button>
+    <h2>Track Record</h2>
+    <p class="muted small">${r.scored.length} scored Round Calls · ${r.voids.length} Void · ${r.open} still open. Only the first Call per startup and Claim counts.</p>
+    <div class="b-grid">
+      <div><h3>Calibration</h3>
+        <svg viewBox="0 0 340 250" class="calib"><line x1="30" y1="220" x2="230" y2="20" class="cal-diag"/><line x1="30" y1="220" x2="230" y2="220" class="cal-axis"/><line x1="30" y1="220" x2="30" y2="20" class="cal-axis"/>
+          <text x="130" y="244" text-anchor="middle" class="cal-l">what you predicted</text><text x="14" y="120" class="cal-l" text-anchor="middle" transform="rotate(-90 14 120)">what came true</text>${pts}</svg>
+        <p class="small muted">On the dashed line means perfectly calibrated.</p></div>
+      <div><h3>Numbers</h3>
+        <p><b>${pct(r.hitRate)}</b> hit rate on Calls of 50% or more</p>
+        <p><b>${r.brier != null ? r.brier.toFixed(2) : "—"}</b> Brier score (0 is perfect, 0.25 is a coin flip)</p>
+        <p><b>${r.medianLead ?? "—"} days</b> median Lead Time</p>
+        <h3>Anti-Portfolio</h3>${r.anti.map(x => `<p><b>${x.s.name}</b>: passed at ${x.c.p}%, raised ${fmt(x.o.date)}</p>`).join("") || '<p class="muted">None yet.</p>'}</div>
+    </div>
+    <h3>Resolved Round Calls</h3>
+    ${r.resolved.map(x => `<p class="small"><b>${x.s.name}</b> · ${x.c.p}% on ${fmt(x.c.date)} → <b class="res-${x.o.result}">${x.o.result.toUpperCase()}</b> · ${x.o.evidence}</p>`).join("")}
+  </div>`;
+}
+
+// C: Feed, mobile-first
+function feedEvents(){
+  const since = "2026-07-20", ev = [];
+  startups.forEach(s => {
+    if (s.status === "Candidate"){ ev.push({ date: lastSignal(s).date, type: "candidate", s }); return; }
+    s.signals.filter(g => g.date >= since && g.source !== "Screening").forEach(g => ev.push({ date: g.date, type: "signal", s, g }));
+    if (["Track", "Pass", "Out of Scope"].includes(s.status) && s.statusDate >= since) ev.push({ date: s.statusDate, type: "decision", s });
+    if (s.status === "Expired" && s.statusDate >= since) ev.push({ date: s.statusDate, type: "expired", s });
+    (s.outcomes || []).filter(o => o.date >= since).forEach(o => ev.push({ date: o.date, type: "outcome", s, o }));
+  });
+  const rank = { candidate: 0, outcome: 1, decision: 2, signal: 3, expired: 4 };
+  return ev.sort((a, b) => b.date.localeCompare(a.date) || rank[a.type] - rank[b.type]);
+}
+function VariantC(){
+  const n = candidates().length;
+  const nb = (k, l) => `<button class="${S.tabC === k && !S.openId ? "on" : ""}" data-act="tabC" data-k="${k}">${l}${k === "feed" && n ? ` <span class="count">${n}</span>` : ""}</button>`;
+  const s = S.openId && byId(S.openId);
+  return `<div class="c">
+    <header class="c-top"><div class="brand">Dealflow</div><button class="btn on-dark" data-act="qa-open">+ Quick Add</button></header>
+    <main class="c-main">${s ? cProfile(s) : S.tabC === "feed" ? cFeed() : S.tabC === "startups" ? cStartups() : cRecord()}</main>
+    <nav class="c-nav">${nb("feed", "Feed")}${nb("startups", "Startups")}${nb("record", "Record")}</nav>
+  </div>`;
+}
+function cFeed(){
+  const ev = feedEvents(), n = candidates().length, resolved = ev.filter(e => e.type === "outcome").length;
+  let html = `<div><div class="small muted">Week of ${fmt("2026-10-12")}</div><h2>${n} Candidate${n === 1 ? "" : "s"} waiting · ${resolved} Call${resolved === 1 ? "" : "s"} resolved recently</h2></div>`;
+  let day = "";
+  ev.forEach(e => { if (e.date !== day){ day = e.date; html += `<div class="c-day">${e.date === TODAY ? "Today" : fmt(e.date)}</div>`; } html += cCard(e); });
+  return html;
+}
+function cCard(e){
+  const s = e.s;
+  if (e.type === "candidate") return cCandidate(s);
+  if (e.type === "signal") return `<article class="c-card" data-act="open" data-id="${s.id}"><div class="c-kind">Signal · ${e.g.source}</div><b>${s.name}</b> <span class="chip ${stCls(s.status)}">${s.status}</span><p class="small">${e.g.text}</p></article>`;
+  if (e.type === "decision"){ const c = firstCall(s, "R12"); return `<article class="c-card quiet" data-act="open" data-id="${s.id}"><div class="c-kind">Your Triage</div><b>${s.name}</b> → ${s.status}${c && c.date === s.statusDate ? ` · Round Call ${c.p}%` : ""}</article>`; }
+  if (e.type === "expired") return `<article class="c-card quiet" data-act="open" data-id="${s.id}"><div class="c-kind">Expired</div><b>${s.name}</b> waited four weeks without Triage. Archived, no Call.</article>`;
+  const c = firstCall(s, e.o.claim);
+  return `<article class="c-card outcome" data-act="open" data-id="${s.id}"><div class="c-kind">Call resolved</div><b>${s.name}</b><p>Your Call: <b>${c.p}%</b> on “${CLAIMS[e.o.claim]}” → <b class="res-${e.o.result}">${e.o.result.toUpperCase()}</b></p><p class="small muted">${e.o.evidence}</p></article>`;
+}
+function cCandidate(s){
+  const g = lastSignal(s), ex = S.cExpand && S.cExpand.id === s.id ? S.cExpand.decision : null;
+  const origin = [...s.signals].filter(x => x.source !== "Screening").sort((a, b) => b.date.localeCompare(a.date))[0] || g;
+  return `<form class="c-card cand" data-id="${s.id}" onsubmit="return false">
+    <div class="c-kind">New Candidate · ${origin.source} · Priority ${s.priority}</div>
+    <div class="row-between" style="margin:0"><span class="c-name" data-act="open" data-id="${s.id}">${s.name}</span><span class="chip lane">${LANE_SHORT[s.lane]}</span></div>
+    <p>${s.oneLiner}</p>
+    <p class="small muted">${origin.text}${g !== origin ? `<br>${g.text}` : ""}</p>
+    <p class="small"><b>Team:</b> ${s.team}</p>
+    ${ex ? `${callFields()}
+        <details><summary>Scorecard · Claude's draft</summary>${factorFields(s)}</details>
+        <div class="decide"><button type="button" class="btn ${ex === "Track" ? "sky" : "primary"}" data-act="decide" data-decision="${ex}">Record Call · ${ex}</button><button type="button" class="btn" data-act="c-cancel">Cancel</button></div>`
+      : `<div class="decide three">
+        <button type="button" class="btn sky" data-act="c-expand" data-id="${s.id}" data-decision="Track">Track</button>
+        <button type="button" class="btn" data-act="c-expand" data-id="${s.id}" data-decision="Pass">Pass</button>
+        <button type="button" class="btn" data-act="decide" data-decision="Out of Scope">Out of Scope</button></div>`}
+  </form>`;
+}
+function cStartups(){ return `<input id="c-search" class="c-search" placeholder="Search startups" value="${esc(S.search)}" autocomplete="off"><div id="c-list">${cList()}</div>`; }
+function cList(){
+  const q = S.search.toLowerCase();
+  return Object.keys(LANES).map(k => {
+    const rows = startups.filter(s => s.lane === k && !isArchived(s) && (!q || s.name.toLowerCase().includes(q) || s.oneLiner.toLowerCase().includes(q))).sort((a, b) => b.priority - a.priority);
+    return rows.length ? `<h3>${LANES[k]}</h3>${rows.map(s => { const g = lastSignal(s), c = firstCall(s, "R12");
+      return `<button class="c-row" data-act="open" data-id="${s.id}"><span class="sdot ${stCls(s.status)}"></span><span><b>${s.name}</b><span class="small muted"> · ${s.stage}</span><br><span class="small muted">${fmtShort(g.date)} · ${g.source}</span></span><span class="small">${c ? c.p + "%" : ""}</span></button>`; }).join("")}` : "";
+  }).join("") || '<p class="muted">No match.</p>';
+}
+function cProfile(s){
+  return `<div class="c-profile"><button class="btn" data-act="close">← Back</button>
+    <h2>${s.name}</h2><div class="badges">${badges(s)}</div><p>${s.oneLiner}</p>
+    ${shareToggle(s)}
+    ${s.status === "Candidate" ? '<p><button class="btn primary" data-act="close">Triage it in the Feed</button></p>' : ""}
+    <details open><summary>Calls</summary>${callsBlock(s)}</details>
+    <details><summary>Scorecard</summary>${scoreBars(s)}</details>
+    <details><summary>Team and Legal Entities</summary>${facts(s)}</details>
+    <h3>Story</h3>
+    <div class="story">${timeline(s).map(i => `<div class="st k-${i.kind}"><div class="small muted">${fmt(i.date)} · ${i.label}</div><div>${i.text}</div>${i.sub ? `<div class="small muted">${i.sub}</div>` : ""}</div>`).join("")}</div>
+  </div>`;
+}
+function cRecord(){
+  const r = record();
+  return `<div class="c-big"><div><span>${pct(r.hitRate)}</span>Hit rate (Calls ≥ 50%)</div><div><span>${r.brier != null ? r.brier.toFixed(2) : "—"}</span>Brier score</div><div><span>${r.medianLead ?? "—"} d</span>Median Lead Time</div><div><span>${r.anti.length}</span>Anti-Portfolio</div></div>
+    <h3>Calibration</h3>${r.buckets.map(b => `<div class="cal-row"><span class="small">${b.label} <span class="muted">(${b.n})</span></span><div class="cal-bars"><div class="cb pred" style="width:${(b.predicted || 0) * 100}%"></div><div class="cb act" style="width:${(b.actual || 0) * 100}%"></div></div><span class="small">${pct(b.predicted)} → ${pct(b.actual)}</span></div>`).join("")}
+    <p class="small muted">Light bar: what you predicted on average. Dark bar: how often it came true.</p>
+    <h3>Anti-Portfolio</h3>${r.anti.map(x => `<button class="c-row" data-act="open" data-id="${x.s.id}"><span class="sdot st-Pass"></span><span><b>${x.s.name}</b><br><span class="small muted">Passed at ${x.c.p}% · raised ${fmt(x.o.date)}</span></span><span></span></button>`).join("") || '<p class="muted small">None yet.</p>'}
+    <h3>All resolved Round Calls</h3>${r.resolved.map(x => `<button class="c-row" data-act="open" data-id="${x.s.id}"><span class="sdot ${stCls(x.s.status)}"></span><span><b>${x.s.name}</b><br><span class="small muted">${x.c.p}% → <b class="res-${x.o.result}">${x.o.result.toUpperCase()}</b> · ${fmt(x.o.date)}</span></span><span></span></button>`).join("")}`;
+}
+
+// Actions (all in memory)
+function decide(form, decision){
+  const s = byId(form.dataset.id), field = n => form.querySelector(`[name="${n}"]`);
+  const rationale = ((field("rationale") || {}).value || "").trim();
+  if (decision !== "Out of Scope" && !rationale){ toast("Add a one-line rationale first. A Call without a reason teaches you nothing."); field("rationale").focus(); return; }
+  let msg = `${decision}: ${s.name}`;
+  if (decision === "Out of Scope"){
+    s.reason = esc(rationale || "Screening was wrong.") + " Fed to the Screening Proposals.";
+    msg += " · no Call, fed to the Screening Proposals";
+  } else {
+    const score = { ...(s.score || sc(3, 3, 3, 3, 3, 3, 1)) };
+    FACTORS.forEach(([k]) => { const i = field(k); if (i) score[k] = +i.value; });
+    s.score = score;
+    s.calls.push({ date: TODAY, claim: "R12", p: +field("r12").value, rationale: esc(rationale) });
+    s.calls.push({ date: TODAY, claim: "A36", p: +field("a36").value, rationale: esc(rationale) });
+    if (decision === "Pass") s.reason = esc(rationale);
+    msg += ` · Round Call ${field("r12").value}% recorded`;
+  }
+  s.status = decision; s.statusDate = TODAY;
+  S.cExpand = null; S.triageId = null; S.bCur = null;
+  if (S.bTriage && !candidates().length){ S.bTriage = false; msg += " · Triage done"; }
+  toast(msg + " (in memory only)");
+  render();
+  if (S.variant === "A") window.scrollTo(0, 0);
+}
+function quickAddModal(){
+  return `<div class="modal-backdrop" data-act="qa-close"></div><div class="modal qa"><h2>Quick Add</h2>
+    <p class="small muted">Paste a link or a few words, for example from LinkedIn. The radar fills in the rest from open sources.</p>
+    <input id="qa-input" placeholder="https://… or text" autocomplete="off">
+    <div class="decide"><button class="btn primary" data-act="qa-add">Add as Candidate</button><button class="btn" data-act="qa-close">Cancel</button></div></div>`;
+}
+function quickAdd(){
+  const raw = document.getElementById("qa-input").value.trim(); if (!raw) return;
+  let name = raw.split(/\s+/).slice(0, 3).join(" ");
+  try { const host = new URL(raw).hostname.replace(/^www\./, ""); name = host.includes("linkedin") ? "New startup from LinkedIn" : host.split(".")[0].replace(/^./, c => c.toUpperCase()); } catch (e) {}
+  const t = raw.toLowerCase();
+  const lane = /agent|llm|erp|workflow|\bai\b/.test(t) ? "AGT" : /robot|gripper|drone|autonom/.test(t) ? "ROB" : "MFG";
+  const id = "q" + Date.now();
+  startups.push({ id, name: esc(name), lane, hq: "unknown", country: "?", stage: "Pre-round", status: "Candidate", priority: 50, firstSeen: TODAY,
+    oneLiner: "Added by hand. Enrichment would fill this in.", team: "Not enriched yet.", entities: [], score: null, calls: [],
+    signals: [{ date: TODAY, source: "Quick Add", text: "Owner pasted: " + esc(raw) },
+      { date: TODAY, source: "Screening", text: "Lane guessed from keywords. Enrichment from open sources would run now (skipped in the prototype)." }] });
+  S.quickAdd = false; S.openId = id; S.tabA = "radar"; S.bTriage = false;
+  toast(`${esc(name)} added as Candidate (in memory only)`);
+  render();
+}
+let toastTimer;
+function toast(msg){ const t = document.getElementById("toast"); t.innerHTML = msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 3000); }
+
+function setVariant(v){
+  Object.assign(S, { variant: v, openId: null, cExpand: null, bTriage: false, bCur: null, recordOpen: false, quickAdd: false });
+  try { const u = new URL(location.href); u.searchParams.set("variant", v); history.replaceState(null, "", u); } catch (e) {}
+  render(); window.scrollTo(0, 0);
+}
+function render(){
+  document.body.dataset.variant = S.variant;
+  const calls = startups.reduce((n, s) => n + s.calls.length, 0);
+  document.getElementById("banner").textContent = `PROTOTYPE · invented demo data · nothing is saved · today is ${fmt(TODAY)} · state: ${candidates().length} Candidates, ${calls} Calls, ${startups.length} startups`;
+  document.getElementById("app").innerHTML = { A: VariantA, B: VariantB, C: VariantC }[S.variant]() + (S.quickAdd ? quickAddModal() : "");
+  const [k, name] = VARIANTS.find(x => x[0] === S.variant);
+  document.getElementById("switcher").innerHTML = `<button data-act="prev" aria-label="Previous variant">←</button><span><b>${k}</b> · ${name}</span><button data-act="next" aria-label="Next variant">→</button>`;
+}
+
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const a = el.dataset.act, id = el.dataset.id;
+  switch (a){
+    case "prev": case "next": { const i = VARIANTS.findIndex(v => v[0] === S.variant); setVariant(VARIANTS[(i + (a === "next" ? 1 : -1) + VARIANTS.length) % VARIANTS.length][0]); break; }
+    case "tabA": S.tabA = el.dataset.k; S.openId = null; render(); break;
+    case "filter": S[el.dataset.attr] = el.dataset.val; render(); break;
+    case "sort": { const k = el.dataset.k; if (S.sortKey === k) S.sortDir *= -1; else { S.sortKey = k; S.sortDir = k === "name" || k === "lane" ? 1 : -1; } render(); break; }
+    case "open":
+      if (S.variant === "B" && S.bTriage){ const s = byId(id); if (s && s.status === "Candidate"){ S.bCur = id; render(); } break; }
+      S.openId = id; S.recordOpen = false; render(); if (S.variant === "C") window.scrollTo(0, 0); break;
+    case "open-from-record": S.tabA = "radar"; S.openId = id; render(); break;
+    case "close": S.openId = null; render(); break;
+    case "to-triage": S.tabA = "triage"; S.triageId = id; S.openId = null; render(); break;
+    case "pick": S.triageId = id; render(); break;
+    case "decide": decide(el.closest("form"), el.dataset.decision); break;
+    case "share": { const s = byId(id); s.shareable = el.checked; toast(`${s.name} is ${el.checked ? "now Shareable in Fund Views" : "no longer Shareable"} (in memory only)`); render(); break; }
+    case "qa-open": S.quickAdd = true; render(); document.getElementById("qa-input").focus(); break;
+    case "qa-close": S.quickAdd = false; render(); break;
+    case "qa-add": quickAdd(); break;
+    case "b-triage": S.bTriage = !S.bTriage; S.openId = null; S.bCur = null; render(); break;
+    case "b-triage-this": S.bTriage = true; S.bCur = id; S.openId = null; render(); break;
+    case "b-skip": { const l = candidates(); S.bCur = l[(l.indexOf(bCurrent()) + 1) % l.length].id; render(); break; }
+    case "b-archived": S.showArchived = el.checked; render(); break;
+    case "b-record": S.recordOpen = true; render(); break;
+    case "rec-close": S.recordOpen = false; render(); break;
+    case "tabC": S.tabC = el.dataset.k; S.openId = null; render(); window.scrollTo(0, 0); break;
+    case "c-expand": S.cExpand = { id, decision: el.dataset.decision }; render(); break;
+    case "c-cancel": S.cExpand = null; render(); break;
+  }
+});
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.type === "range" && t.nextElementSibling && t.nextElementSibling.tagName === "OUTPUT") t.nextElementSibling.textContent = t.value + (t.dataset.suffix || "");
+  if (t.id === "c-search"){ S.search = t.value; document.getElementById("c-list").innerHTML = cList(); }
+});
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t.id === "qa-input" && e.key === "Enter"){ quickAdd(); return; }
+  if (t.closest && t.closest("input,textarea,select,[contenteditable]")) return;
+  if (e.key === "ArrowRight") document.querySelector('#switcher [data-act="next"]').click();
+  else if (e.key === "ArrowLeft") document.querySelector('#switcher [data-act="prev"]').click();
+  else if (e.key === "Escape"){ Object.assign(S, { openId: null, quickAdd: false, recordOpen: false }); render(); }
+});
+render();
+</script>
+</body>
+</html>
