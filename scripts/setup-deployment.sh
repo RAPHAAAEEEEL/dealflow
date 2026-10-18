@@ -182,14 +182,24 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job).
 # Secrets are typed hidden, piped to gh / the Vercel CLI, and never printed.
+# Resume after finished stages:  START_AT=6 ./scripts/setup-deployment.sh
 # ──────────────────────────────────────────────────────────────────────────
 
 TOTAL_STAGES=10
+START_AT="${START_AT:-1}"
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE=".env.local"
 REPO="RAPHAAAEEEEL/dealflow"
 OWNER_LOGIN="RAPHAAAEEEEL"
 VERCEL=(npx --yes vercel@64.5.0)
+PROJECT_NAME_PATTERN='^[a-z0-9][a-z0-9._-]{0,99}$'
+
+# Values from earlier runs, so a resumed run can skip finished stages.
+VERCEL_PROJECT="$(_existing VERCEL_PROJECT || true)"
+DEALFLOW_APP_URL="$(_existing DEALFLOW_APP_URL || true)"
+DATABASE_URL=""
+AUTH_GITHUB_ID=""
+AUTH_GITHUB_SECRET=""
 
 # Keeps asking until the value matches the pattern.
 ask_until() {
@@ -203,6 +213,8 @@ ask_secret_until() {
   until [[ "${!key}" =~ $pattern ]]; do warn "$hint"; ask_secret "$key" "$prompt"; done
 }
 
+has_github_secret() { gh secret list --json name --jq '.[].name' 2>/dev/null | grep -qx "$1"; }
+
 # Sets a production environment variable on Vercel, value through stdin so it never shows up anywhere.
 vercel_env() {
   local name="$1" value="$2" kind="${3:---sensitive}"
@@ -214,172 +226,225 @@ vercel_env() {
   fi
 }
 
-banner "Dealflow deployment"
-
-# ── 1 ─────────────────────────────────────────────────────────────────────
-stage "Preflight"
-say "Checking that everything this wizard relies on is in place."
-command -v node >/dev/null || { warn "Node.js is missing. Install Node 24, then re-run."; exit 1; }
-gh auth status >/dev/null 2>&1 || { warn "The GitHub CLI isn't logged in. Run 'gh auth login', then re-run."; exit 1; }
-[[ -d node_modules ]] || { say "Installing packages once (npm install)..."; npm install --no-audit --no-fund >/dev/null; }
-git fetch --quiet origin main
-if ! git cat-file -e origin/main:src/proxy.ts 2>/dev/null; then
-  warn "GitHub's main branch doesn't contain the deployment code yet."
-  warn "Ask Claude to merge and push slice 3 first, then re-run this wizard."
-  exit 1
-fi
-printf '  %s✓%s Node, GitHub CLI and the deployment code on GitHub are ready.\n' "$GREEN" "$RESET"
-pause
-
-# ── 2 ─────────────────────────────────────────────────────────────────────
-stage "SHAB terms"
-say "The SHAB terms must be accepted by you in person, and again every 90 days (docs/adr/0002)."
-open_url "https://www.shab.ch/static/agb_de.pdf"
-open_url "https://www.shab.ch"
-step "Read the terms (the PDF)."
-step "On shab.ch, the banner at the top says you accept the terms by using the portal: click OK."
-ask SHAB_TERMS_ACCEPTED_ON "Date you accepted them, YYYY-MM-DD (Enter = today):"
-[[ -z "$SHAB_TERMS_ACCEPTED_ON" ]] && SHAB_TERMS_ACCEPTED_ON="$(date +%F)"
-until [[ "$SHAB_TERMS_ACCEPTED_ON" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; do
-  warn "Use the format YYYY-MM-DD."
-  ask SHAB_TERMS_ACCEPTED_ON "Date you accepted them:"
-done
-write_env SHAB_TERMS_ACCEPTED_ON "$SHAB_TERMS_ACCEPTED_ON"
-set_var SHAB_TERMS_ACCEPTED_ON "$SHAB_TERMS_ACCEPTED_ON"
-note "In 90 days the job stops and GitHub emails you about the failed run. Accept again, then:"
-note "gh variable set SHAB_TERMS_ACCEPTED_ON --body YYYY-MM-DD"
-pause
-
-# ── 3 ─────────────────────────────────────────────────────────────────────
-stage "Claude API key"
-say "Screening uses Claude Haiku. The key is stored for local runs and as a GitHub secret for the daily job."
-open_url "https://console.anthropic.com/settings/keys"
-note "If the page has moved, open the Claude Console and go to Settings → API keys."
-step "Create a key, name it 'dealflow', and copy it (it starts with sk-ant-)."
-ask_secret_until ANTHROPIC_API_KEY "Paste the API key (hidden):" '^sk-ant-' "That doesn't look like a Claude API key (it starts with sk-ant-)."
-write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
-set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
-step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
-note "The code already stops before the month's spend passes \$10 (docs/adr/0005)."
-pause
-
-# ── 4 ─────────────────────────────────────────────────────────────────────
-stage "Neon database"
-say "The hosted Postgres for the radar, in Frankfurt so the data stays in the EU."
-open_url "https://console.neon.tech"
-step "Sign in (GitHub is fine), then create a new project named 'dealflow'."
-step "Region: AWS Europe Central 1 (Frankfurt). Keep the other defaults and create the project."
-step "Click 'Connect', make sure connection pooling is on (the host name contains '-pooler'), and copy the connection string."
-ask_secret_until DATABASE_URL "Paste the connection string (hidden):" '^postgres(ql)?://' "It should start with postgresql://"
-[[ "$DATABASE_URL" == *-pooler* ]] || warn "No '-pooler' in the host: turn on connection pooling in Neon if you can."
-set_secret DATABASE_URL "$DATABASE_URL"
-note "Not written to .env.local: local work keeps using the local database and never touches live data."
-if confirm "Create Dealflow's tables in the Neon database now?"; then
-  if DATABASE_URL="$DATABASE_URL" npm run --silent db:migrate; then
-    printf '  %s✓%s Tables created.\n' "$GREEN" "$RESET"
-  else
-    warn "Creating the tables failed. Check the connection string, then re-run this wizard."
+stage_1() {
+  stage "Preflight"
+  say "Checking that everything this wizard relies on is in place."
+  command -v node >/dev/null || { warn "Node.js is missing. Install Node 24, then re-run."; exit 1; }
+  gh auth status >/dev/null 2>&1 || { warn "The GitHub CLI isn't logged in. Run 'gh auth login', then re-run."; exit 1; }
+  [[ -d node_modules ]] || { say "Installing packages once (npm install)..."; npm install --no-audit --no-fund >/dev/null; }
+  git fetch --quiet origin main
+  if ! git cat-file -e origin/main:src/proxy.ts 2>/dev/null; then
+    warn "GitHub's main branch doesn't contain the deployment code yet."
+    warn "Ask Claude to merge and push slice 3 first, then re-run this wizard."
     exit 1
   fi
-fi
-pause
+  printf '  %s✓%s Node, GitHub CLI and the deployment code on GitHub are ready.\n' "$GREEN" "$RESET"
+  pause
+}
 
-# ── 5 ─────────────────────────────────────────────────────────────────────
-stage "Vercel project"
-say "Vercel hosts the app. The first deploy stays shut on purpose: login isn't configured yet."
-open_url "https://vercel.com/new"
-step "Sign in with GitHub, then under 'Import Git Repository' pick $REPO."
-step "Don't see it? Use the link to adjust the GitHub app's permissions and give Vercel access to that repository."
-step "Keep the project name 'dealflow' and the framework 'Next.js'."
-step "Under 'Environment Variables' add DATABASE_URL with the Neon connection string (copy it again in the Neon tab)."
-note "Without it the build stops on purpose: a production radar without its database must not deploy."
-step "Click Deploy. When it's done, copy the production address (something like https://dealflow-….vercel.app)."
-note "An error page on that address is expected for now: no login is configured yet, so the radar stays shut."
-ask VERCEL_PROJECT "Project name on Vercel (Enter = dealflow):"
-[[ -z "$VERCEL_PROJECT" ]] && VERCEL_PROJECT="dealflow"
-ask_until DEALFLOW_APP_URL "Production address:" '^(https://)?[A-Za-z0-9.-]+\.[A-Za-z]{2,}/?$' "Paste just the address, like https://dealflow-abc.vercel.app"
-DEALFLOW_APP_URL="${DEALFLOW_APP_URL%/}"
-[[ "$DEALFLOW_APP_URL" == https://* ]] || DEALFLOW_APP_URL="https://$DEALFLOW_APP_URL"
-write_env VERCEL_PROJECT "$VERCEL_PROJECT"
-write_env DEALFLOW_APP_URL "$DEALFLOW_APP_URL"
-pause
+stage_2() {
+  stage "SHAB terms"
+  say "The SHAB terms must be accepted by you in person, and again every 90 days (docs/adr/0002)."
+  open_url "https://www.shab.ch/static/agb_de.pdf"
+  open_url "https://www.shab.ch"
+  step "Read the terms (the PDF)."
+  step "On shab.ch, the banner at the top says you accept the terms by using the portal: click OK."
+  ask SHAB_TERMS_ACCEPTED_ON "Date you accepted them, YYYY-MM-DD (empty = today):"
+  [[ -z "$SHAB_TERMS_ACCEPTED_ON" ]] && SHAB_TERMS_ACCEPTED_ON="$(date +%F)"
+  until [[ "$SHAB_TERMS_ACCEPTED_ON" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; do
+    warn "Use the format YYYY-MM-DD."
+    ask SHAB_TERMS_ACCEPTED_ON "Date you accepted them:"
+  done
+  write_env SHAB_TERMS_ACCEPTED_ON "$SHAB_TERMS_ACCEPTED_ON"
+  set_var SHAB_TERMS_ACCEPTED_ON "$SHAB_TERMS_ACCEPTED_ON"
+  note "In 90 days the job stops and GitHub emails you about the failed run. Accept again, then:"
+  note "gh variable set SHAB_TERMS_ACCEPTED_ON --body YYYY-MM-DD"
+  pause
+}
 
-# ── 6 ─────────────────────────────────────────────────────────────────────
-stage "Vercel CLI"
-say "One login in this terminal lets the wizard set Vercel's variables without showing them to anyone."
-step "A browser window opens to confirm the login."
-"${VERCEL[@]}" login
-if ! "${VERCEL[@]}" link --yes --project "$VERCEL_PROJECT" >/dev/null 2>&1; then
-  warn "Linking this folder to the Vercel project '$VERCEL_PROJECT' failed."
-  warn "Run: npx vercel@64.5.0 link   (pick the project), then re-run this wizard."
-  exit 1
-fi
-printf '  %s✓%s This folder is linked to the Vercel project %s.\n' "$GREEN" "$RESET" "$VERCEL_PROJECT"
-pause
+stage_3() {
+  stage "Claude API key"
+  say "Screening uses Claude Haiku. The key is stored for local runs and as a GitHub secret for the daily job."
+  open_url "https://console.anthropic.com/settings/keys"
+  note "If the page has moved, open the Claude Console and go to Settings → API keys."
+  step "Create a key, name it 'dealflow', and copy it (it starts with sk-ant-)."
+  ask_secret_until ANTHROPIC_API_KEY "Paste the API key (hidden):" '^sk-ant-' "That doesn't look like a Claude API key (it starts with sk-ant-)."
+  write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
+  set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
+  step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
+  note "The code already stops before the month's spend passes \$10 (docs/adr/0005)."
+  pause
+}
 
-# ── 7 ─────────────────────────────────────────────────────────────────────
-stage "GitHub sign-in"
-say "A GitHub OAuth app lets you sign in to the radar with your GitHub account. Only $OWNER_LOGIN gets in,"
-say "matched by its numeric id, which never changes (a login can be renamed and then taken by someone else)."
-OWNER_GITHUB_ID="$(gh api user --jq .id)"
-[[ "$(gh api user --jq .login)" == "$OWNER_LOGIN" ]] || { warn "The GitHub CLI is logged in as someone other than $OWNER_LOGIN. Run 'gh auth login' as $OWNER_LOGIN."; exit 1; }
-printf '  %s✓%s Your GitHub id is %s.\n' "$GREEN" "$RESET" "$OWNER_GITHUB_ID"
-open_url "https://github.com/settings/applications/new"
-step "Application name:            Dealflow"
-step "Homepage URL:                $DEALFLOW_APP_URL"
-step "Authorization callback URL:  $DEALFLOW_APP_URL/api/auth/callback/github"
-step "Leave 'Enable Device Flow' unchecked, then click 'Register application'."
-ask_until AUTH_GITHUB_ID "Paste the Client ID:" '^[A-Za-z0-9._-]{10,}$' "Copy the Client ID shown on the app's page."
-step "Click 'Generate a new client secret' and copy it right away; GitHub shows it only once."
-ask_secret_until AUTH_GITHUB_SECRET "Paste the client secret (hidden):" '^[A-Za-z0-9]{20,}$' "That doesn't look like a client secret."
-note "Kept only for the next step; local work runs without login."
-pause
-
-# ── 8 ─────────────────────────────────────────────────────────────────────
-stage "Vercel settings"
-say "Setting the app's production variables through the Vercel CLI."
-AUTH_SECRET="$(openssl rand -base64 33)"
-vercel_env DATABASE_URL "$DATABASE_URL"
-vercel_env AUTH_SECRET "$AUTH_SECRET"
-vercel_env AUTH_GITHUB_ID "$AUTH_GITHUB_ID"
-vercel_env AUTH_GITHUB_SECRET "$AUTH_GITHUB_SECRET"
-vercel_env DEALFLOW_OWNER_GITHUB_ID "$OWNER_GITHUB_ID" --no-sensitive
-unset AUTH_SECRET
-pause
-
-# ── 9 ─────────────────────────────────────────────────────────────────────
-stage "Redeploy and sign in"
-say "The new variables apply once production is built again."
-if confirm "Redeploy production now?"; then
-  if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
-    printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
+stage_4() {
+  stage "Neon database"
+  say "The hosted Postgres for the radar, in Frankfurt so the data stays in the EU."
+  if has_github_secret DATABASE_URL; then
+    note "A connection string is already stored as a GitHub secret. Press Enter to keep it, or paste a new one."
+    ask_secret DATABASE_URL "Connection string (hidden, Enter keeps the stored one):"
+    until [[ -z "$DATABASE_URL" || "$DATABASE_URL" =~ ^postgres(ql)?:// ]]; do
+      warn "It should start with postgresql://"
+      ask_secret DATABASE_URL "Connection string (hidden, Enter keeps the stored one):"
+    done
   else
-    warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy, and wait until it's ready."
-    pause "Press Enter once the redeploy is ready"
+    open_url "https://console.neon.tech"
+    step "Sign in (GitHub is fine), then create a new project named 'dealflow'."
+    step "Region: AWS Europe Central 1 (Frankfurt). Keep the other defaults and create the project."
+    step "Click 'Connect', make sure connection pooling is on (the host name contains '-pooler'), and copy the connection string."
+    ask_secret_until DATABASE_URL "Paste the connection string (hidden):" '^postgres(ql)?://' "It should start with postgresql://"
   fi
-fi
-open_url "$DEALFLOW_APP_URL/feed"
-step "Sign in with GitHub and authorize Dealflow."
-step "You should see the Feed saying 'Nothing to triage'."
-note "An error instead? Vercel → Deployments → newest → Logs shows why."
-pause "Press Enter once you see the Feed"
-
-# ── 10 ────────────────────────────────────────────────────────────────────
-stage "First SHAB run"
-say "From now on GitHub runs the job Tuesday to Saturday for the previous day. Let's run one day by hand."
-LAST_WEEKDAY="$(node -e 'const d=new Date();do{d.setDate(d.getDate()-1)}while([0,6].includes(d.getDay()));console.log(d.toISOString().slice(0,10))')"
-ask RUN_DATE "Publication date to screen (Enter = $LAST_WEEKDAY):"
-[[ -z "$RUN_DATE" ]] && RUN_DATE="$LAST_WEEKDAY"
-if confirm "Run the SHAB job for $RUN_DATE now? It costs a few cents and takes about 4 minutes."; then
-  if gh workflow run shab.yml -R "$REPO" -f date="$RUN_DATE" >/dev/null 2>&1; then
-    printf '  %s✓%s Started.\n' "$GREEN" "$RESET"
-    open_url "https://github.com/$REPO/actions/workflows/shab.yml"
-    step "When the run is green, reload the Feed: the day's Candidates are waiting there."
+  if [[ -z "$DATABASE_URL" ]]; then
+    printf '  %s✓%s Kept the stored connection string.\n' "$GREEN" "$RESET"
   else
-    SKIPPED+=("First SHAB run (GitHub → Actions → SHAB job → Run workflow)")
-    warn "Couldn't start the run; start it in GitHub → Actions → SHAB job → Run workflow."
+    [[ "$DATABASE_URL" == *-pooler* ]] || warn "No '-pooler' in the host: turn on connection pooling in Neon if you can."
+    set_secret DATABASE_URL "$DATABASE_URL"
+    note "Not written to .env.local: local work keeps using the local database and never touches live data."
+    if confirm "Create Dealflow's tables in the Neon database now? (Safe if they already exist.)"; then
+      if DATABASE_URL="$DATABASE_URL" npm run --silent db:migrate; then
+        printf '  %s✓%s Tables are up to date.\n' "$GREEN" "$RESET"
+      else
+        warn "Creating the tables failed. Check the connection string, then re-run from this stage: START_AT=4"
+        exit 1
+      fi
+    fi
   fi
-fi
-pause
+  pause
+}
+
+stage_5() {
+  stage "Vercel project"
+  say "Vercel hosts the app. The first deploy stays shut on purpose: login isn't configured yet."
+  note "Already imported the project? Skip the browser part and confirm the two values below."
+  open_url "https://vercel.com/new"
+  step "Sign in with GitHub, then under 'Import Git Repository' pick $REPO."
+  step "Don't see it? Use the link to adjust the GitHub app's permissions and give Vercel access to that repository."
+  step "Keep the project name 'dealflow' and the framework 'Next.js'."
+  step "Under 'Environment Variables' add DATABASE_URL with the Neon connection string (copy it again in the Neon tab)."
+  note "Without it the build stops on purpose: a production radar without its database must not deploy."
+  step "Click Deploy. When it's done, copy the production address (something like https://dealflow-….vercel.app)."
+  note "An error page on that address is expected for now: no login is configured yet, so the radar stays shut."
+  ask_until DEALFLOW_APP_URL "Production ADDRESS, like https://dealflow-abc.vercel.app:" '^(https://)?[A-Za-z0-9.-]+\.[A-Za-z]{2,}/?$' "Paste just the address, like https://dealflow-abc.vercel.app"
+  DEALFLOW_APP_URL="${DEALFLOW_APP_URL%/}"
+  [[ "$DEALFLOW_APP_URL" == https://* ]] || DEALFLOW_APP_URL="https://$DEALFLOW_APP_URL"
+  ask VERCEL_PROJECT "Project NAME on Vercel, the short name and not the address (empty = dealflow):"
+  [[ -z "$VERCEL_PROJECT" ]] && VERCEL_PROJECT="dealflow"
+  until [[ "$VERCEL_PROJECT" =~ $PROJECT_NAME_PATTERN ]]; do
+    warn "That's not a project name. It's the short name, like dealflow, not the address."
+    ask VERCEL_PROJECT "Project NAME on Vercel:"
+  done
+  write_env DEALFLOW_APP_URL "$DEALFLOW_APP_URL"
+  write_env VERCEL_PROJECT "$VERCEL_PROJECT"
+  pause
+}
+
+stage_6() {
+  stage "Vercel CLI"
+  say "Linking this folder to the Vercel project lets the wizard set Vercel's variables without showing them."
+  if [[ -f .vercel/project.json ]] && grep -q "\"projectName\":\"$VERCEL_PROJECT\"" .vercel/project.json; then
+    printf '  %s✓%s This folder is already linked to the Vercel project %s.\n' "$GREEN" "$RESET" "$VERCEL_PROJECT"
+  else
+    if ! "${VERCEL[@]}" whoami >/dev/null 2>&1; then
+      step "A browser window opens to confirm the login."
+      "${VERCEL[@]}" login
+    fi
+    if ! "${VERCEL[@]}" link --yes --project "$VERCEL_PROJECT" >/dev/null 2>&1; then
+      warn "Linking this folder to the Vercel project '$VERCEL_PROJECT' failed."
+      warn "Check the project's name in the Vercel dashboard, then re-run: START_AT=5"
+      exit 1
+    fi
+    git checkout --quiet -- .gitignore 2>/dev/null || true # vercel link edits it; ours already covers .vercel and .env.local
+    printf '  %s✓%s This folder is linked to the Vercel project %s.\n' "$GREEN" "$RESET" "$VERCEL_PROJECT"
+  fi
+  pause
+}
+
+stage_7() {
+  stage "GitHub sign-in"
+  [[ -n "$DEALFLOW_APP_URL" ]] || { warn "The app's address is missing. Re-run from stage 5: START_AT=5"; exit 1; }
+  say "A GitHub OAuth app lets you sign in to the radar with your GitHub account. Only $OWNER_LOGIN gets in,"
+  say "matched by its numeric id, which never changes (a login can be renamed and then taken by someone else)."
+  [[ "$(gh api user --jq .login)" == "$OWNER_LOGIN" ]] || { warn "The GitHub CLI is logged in as someone other than $OWNER_LOGIN. Run 'gh auth login' as $OWNER_LOGIN."; exit 1; }
+  OWNER_GITHUB_ID="$(gh api user --jq .id)"
+  printf '  %s✓%s Your GitHub id is %s.\n' "$GREEN" "$RESET" "$OWNER_GITHUB_ID"
+  open_url "https://github.com/settings/applications/new"
+  step "Application name:            Dealflow"
+  step "Homepage URL:                $DEALFLOW_APP_URL"
+  step "Authorization callback URL:  $DEALFLOW_APP_URL/api/auth/callback/github"
+  step "Leave 'Enable Device Flow' unchecked, then click 'Register application'."
+  ask_until AUTH_GITHUB_ID "Paste the Client ID:" '^[A-Za-z0-9._-]{10,}$' "Copy the Client ID shown on the app's page."
+  step "Click 'Generate a new client secret' and copy it right away; GitHub shows it only once."
+  ask_secret_until AUTH_GITHUB_SECRET "Paste the client secret (hidden):" '^[A-Za-z0-9]{20,}$' "That doesn't look like a client secret."
+  note "Kept only for the next stage; local work runs without login."
+  pause
+}
+
+stage_8() {
+  stage "Vercel settings"
+  if [[ -z "$AUTH_GITHUB_ID" || -z "$AUTH_GITHUB_SECRET" ]]; then
+    warn "This stage needs the GitHub app from stage 7 in the same run. Re-run from there: START_AT=7"
+    exit 1
+  fi
+  say "Setting the app's production variables through the Vercel CLI."
+  local auth_secret
+  auth_secret="$(openssl rand -base64 33)"
+  if [[ -n "$DATABASE_URL" ]]; then
+    vercel_env DATABASE_URL "$DATABASE_URL"
+  else
+    note "Vercel keeps the DATABASE_URL it already has."
+  fi
+  vercel_env AUTH_SECRET "$auth_secret"
+  vercel_env AUTH_GITHUB_ID "$AUTH_GITHUB_ID"
+  vercel_env AUTH_GITHUB_SECRET "$AUTH_GITHUB_SECRET"
+  vercel_env DEALFLOW_OWNER_GITHUB_ID "$OWNER_GITHUB_ID" --no-sensitive
+  pause
+}
+
+stage_9() {
+  stage "Redeploy and sign in"
+  say "The new variables apply once production is built again."
+  if confirm "Redeploy production now?"; then
+    if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
+      printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
+    else
+      warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy, and wait until it's ready."
+      pause "Press Enter once the redeploy is ready"
+    fi
+  fi
+  open_url "$DEALFLOW_APP_URL/feed"
+  step "Sign in with GitHub and authorize Dealflow."
+  step "You should see the Feed saying 'Nothing to triage'."
+  note "An error instead? Vercel → Deployments → newest → Logs shows why."
+  pause "Press Enter once you see the Feed"
+}
+
+stage_10() {
+  stage "First SHAB run"
+  say "From now on GitHub runs the job Tuesday to Saturday for the previous day. Let's run one day by hand."
+  local last_weekday
+  last_weekday="$(node -e 'const d=new Date();do{d.setDate(d.getDate()-1)}while([0,6].includes(d.getDay()));console.log(d.toISOString().slice(0,10))')"
+  ask RUN_DATE "Publication date to screen (empty = $last_weekday):"
+  [[ -z "$RUN_DATE" ]] && RUN_DATE="$last_weekday"
+  if confirm "Run the SHAB job for $RUN_DATE now? It costs a few cents and takes about 4 minutes."; then
+    if gh workflow run shab.yml -R "$REPO" -f date="$RUN_DATE" >/dev/null 2>&1; then
+      printf '  %s✓%s Started.\n' "$GREEN" "$RESET"
+      open_url "https://github.com/$REPO/actions/workflows/shab.yml"
+      step "When the run is green, reload the Feed: the day's Candidates are waiting there."
+    else
+      SKIPPED+=("First SHAB run (GitHub → Actions → SHAB job → Run workflow)")
+      warn "Couldn't start the run; start it in GitHub → Actions → SHAB job → Run workflow."
+    fi
+  fi
+  pause
+}
+
+banner "Dealflow deployment"
+OWNER_GITHUB_ID=""
+for (( n = 1; n <= TOTAL_STAGES; n++ )); do
+  if (( n < START_AT )); then
+    _STAGE_INDEX=$n # skipped: finished in an earlier run
+    continue
+  fi
+  "stage_$n"
+done
 
 finish
