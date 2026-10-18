@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 date: 2026-10-18
 status: accepted by the Owner on 2026-10-18
 ---
@@ -7,6 +7,8 @@ status: accepted by the Owner on 2026-10-18
 # Screening Criteria
 
 Screening uses these rules to decide whether a Sighting belongs to a startup in one of the three Lanes and whether it is early enough. Every Screening result records the version it was judged against. Changes come as Proposals and take effect only when the Owner accepts them.
+
+Version 2 (2026-10-18): AI assurance tools count as agent infrastructure. This came from the first spot check, where Screening discarded a maker of AI reliability tools as consulting.
 
 ## Stage Rule
 
@@ -49,6 +51,7 @@ In the Lane:
 
 - software whose AI agents execute business workflows inside a company's own systems and data (ERP, quality, finance, procurement, operations)
 - the infrastructure that lets agents touch real workflows: permissions, context, audit trails
+- tools that test, evaluate or audit AI systems and agents (assurance), when the company builds them as its own product, even if it also offers services around them
 - B2B players in industrial software, mobility or deep tech that own their customers' workflows
 
 Not in the Lane:
