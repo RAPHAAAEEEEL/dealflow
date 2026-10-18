@@ -220,6 +220,27 @@ ask_secret_until() {
   until [[ "${!key}" =~ $pattern ]]; do warn "$hint"; ask_secret "$key" "$prompt"; done
 }
 
+# Like ask_secret_until, but typing "c" takes the value from the clipboard, never showing it.
+# Helps where pasting into a hidden prompt doesn't work.
+ask_secret_until_or_clipboard() {
+  local key="$1" prompt="$2" pattern="$3" hint="$4"
+  note "Paste it, or copy it and type c then Enter to take it straight from the clipboard."
+  ask_secret "$key" "$prompt"
+  while true; do
+    if [[ "${!key}" == "c" ]]; then
+      if command -v pbpaste >/dev/null 2>&1; then printf -v "$key" '%s' "$(pbpaste | tr -d '[:space:]')"
+      elif command -v xclip >/dev/null 2>&1; then printf -v "$key" '%s' "$(xclip -o -selection clipboard | tr -d '[:space:]')"
+      else warn "No clipboard tool found here; paste the value instead."
+      fi
+    fi
+    [[ "${!key}" =~ $pattern ]] && break
+    warn "$hint"
+    ask_secret "$key" "$prompt"
+  done
+  local value="${!key}"
+  printf '  %s✓%s Got it (%s characters, not shown).\n' "$GREEN" "$RESET" "${#value}"
+}
+
 has_github_secret() { gh secret list --json name --jq '.[].name' 2>/dev/null | grep -qx "$1"; }
 
 # Sets a production environment variable on Vercel, value through stdin so it never shows up anywhere.
@@ -276,7 +297,7 @@ stage_3() {
   note "If the page has moved, open the Claude Console and go to Settings → API keys."
   step "Create a key, name it 'dealflow', and copy it. An API key starts with sk-ant-api."
   note "Other Anthropic tokens (sk-ant-usr-…, sk-ant-oat-…) are not API keys and won't work here."
-  ask_secret_until ANTHROPIC_API_KEY "Paste the API key (hidden):" '^sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{60,}$' "That isn't a Claude API key: it starts with sk-ant-api and is about 100 characters long."
+  ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-api[0-9]{2}-[A-Za-z0-9_-]{60,}$' "That isn't a Claude API key: it starts with sk-ant-api and is about 100 characters long."
   write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
@@ -381,7 +402,7 @@ stage_7() {
   step "Leave 'Enable Device Flow' unchecked, then click 'Register application'."
   ask_until AUTH_GITHUB_ID "Paste the Client ID:" '^[A-Za-z0-9._-]{10,}$' "Copy the Client ID shown on the app's page."
   step "Click 'Generate a new client secret' and copy it right away; GitHub shows it only once."
-  ask_secret_until AUTH_GITHUB_SECRET "Paste the client secret (hidden):" '^[A-Za-z0-9]{20,}$' "That doesn't look like a client secret."
+  ask_secret_until_or_clipboard AUTH_GITHUB_SECRET "Client secret (hidden), or c for the clipboard:" '^[A-Za-z0-9]{20,}$' "That doesn't look like a client secret."
   note "Kept only for the next stage; local work runs without login."
   pause
 }
