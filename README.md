@@ -18,7 +18,7 @@ What counts as in or out of each lane is written down in [criteria/screening-cri
 
 1. **Sources** deliver raw publications. Today that is the Swiss commercial-register gazette (SHAB): every new company registered in Switzerland.
 2. **Screening** discards everything that can't take venture money (only an AG or a GmbH can) for free. Claude Haiku then judges the rest against the lane definitions, for an estimated $1 a month.
-3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review. Entries that Claude discarded but found close to a lane show up as **near misses**: I either pull one into review or confirm it was rightly out, and both verdicts become evidence for changing the lane definitions.
+3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review. Entries that Claude discarded but found close to a lane show up as **near misses**: I either pull one into triage or confirm it was rightly out, and both decisions become evidence for proposed changes to the lane definitions.
 4. **Triage**. Every Sunday an email brings the waiting candidates, the week's near misses and a status check of the pipeline. Then I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
 5. **Outcomes** *(later)*. A watchlist checks whether those rounds happen, and each Call resolves to yes or no.
 6. **Track record** *(later)*. Hit rate, calibration and lead time: how many days before the public announcement I was convinced.

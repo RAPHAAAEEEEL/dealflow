@@ -1,4 +1,5 @@
 import { and, count, eq, gte, lte } from "drizzle-orm";
+import { dayOf, daysBefore } from "@/dates";
 import type { Db } from "@/db";
 import { calls, signals, startups, triageDecisions } from "@/db/schema";
 import { createRadar, type RadarRow } from "@/radar/radar";
@@ -12,8 +13,6 @@ const EXPIRY_DAYS = 28;
 const MOMENTUM_WINDOW_DAYS = 90;
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
-
-const daysBefore = (at: Date, days: number) => new Date(at.getTime() - days * 24 * 60 * 60 * 1000);
 
 // Candidates that waited four weeks without Triage expire: archived, not deleted, and without a Call (CONTEXT.md).
 function expireOverdue(db: Db, at: Date) {
@@ -91,7 +90,7 @@ function validate(input: Extract<TriageInput, { decision: "Track" | "Pass" }>) {
 
 // Momentum is the one Factor the radar sets: the startup's Signals in the last 90 days, from 1 to 5.
 async function momentumOf(tx: Tx, startupId: string, at: Date) {
-  const since = daysBefore(at, MOMENTUM_WINDOW_DAYS).toISOString().slice(0, 10);
+  const since = dayOf(daysBefore(at, MOMENTUM_WINDOW_DAYS));
   const [{ recent }] = await tx
     .select({ recent: count() })
     .from(signals)

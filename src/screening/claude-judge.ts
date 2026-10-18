@@ -25,7 +25,7 @@ const answerFormat = jsonSchemaOutputFormat({
   additionalProperties: false,
 });
 
-const percent = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+const clampPercent = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 function systemPrompt(criteria: Criteria) {
   return `You screen new Swiss commercial-register entries for a private startup radar. For each entry, decide whether it is plausibly a venture-backable startup in one of the three Lanes defined below, using only the facts given.
@@ -96,7 +96,7 @@ export function createClaudeJudge(client: Anthropic = new Anthropic()): Judge {
         return {
           inLane: false,
           nearestLane: answer.lane,
-          closeness: answer.lane === null ? 0 : percent(answer.closeness),
+          closeness: answer.lane === null ? 0 : clampPercent(answer.closeness),
           oneLiner: answer.oneLiner,
           reason: answer.reason,
           usage,
@@ -107,7 +107,7 @@ export function createClaudeJudge(client: Anthropic = new Anthropic()): Judge {
         lane: answer.lane,
         secondaryLane: answer.secondaryLane === answer.lane ? null : answer.secondaryLane,
         oneLiner: answer.oneLiner,
-        priority: percent(answer.priority),
+        priority: clampPercent(answer.priority),
         reason: answer.reason,
         usage,
       };

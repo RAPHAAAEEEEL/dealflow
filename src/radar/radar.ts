@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { dayOf } from "@/dates";
 import type { Db } from "@/db";
 import { calls, legalEntities, signals, sightings, startups, triageDecisions } from "@/db/schema";
 import type { Lane } from "@/screening/types";
@@ -42,7 +43,6 @@ export type StartupProfile = RadarRow & {
 
 const CLAIM_ORDER = Object.keys(CLAIMS);
 const SAME_DAY_ORDER = { triage: 0, call: 1, signal: 2 };
-const dayOf = (at: Date) => at.toISOString().slice(0, 10);
 
 export function createRadar(db: Db) {
   return {

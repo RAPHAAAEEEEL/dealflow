@@ -1,11 +1,9 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { openDb, type Db } from "@/db";
-import { runShabJob } from "@/jobs/shab-job";
+import { entryNamed, runShabDay } from "@/jobs/shab-job.testing";
 import { createRadar } from "@/radar/radar";
 import { fakeJudge, inLane } from "@/screening/judge.testing";
-import type { Judge } from "@/screening/types";
-import { createShabSource } from "@/sources/shab";
-import { exampleEntry, fakeShabHttp, type FakeRegistration } from "@/sources/shab.testing";
+import { exampleEntry } from "@/sources/shab.testing";
 import { createTriage } from "./triage";
 import type { TriageInput } from "./types";
 
@@ -14,33 +12,18 @@ beforeEach(async () => {
   db = await openDb();
 });
 
-// Startups reach the radar the way production does: through a SHAB run.
-function runJob(days: Record<string, FakeRegistration[]>, date: string, judge: Judge, screenedAt: string) {
-  return runShabJob(
-    {
-      db,
-      shab: createShabSource(fakeShabHttp(days)),
-      judge,
-      criteria: { version: 1, text: "Lanes." },
-      monthlyCapUsd: 10,
-      now: () => new Date(screenedAt),
-    },
-    date,
-  );
-}
-
 async function candidates(priorities: Record<string, number>, screenedAt = "2026-10-17T06:00:00Z") {
   const names = Object.keys(priorities);
-  const entries = names.map((name) => ({ ...exampleEntry, id: `pub-${name}`, name, uid: `CHE-${name}` }));
+  const entries = names.map(entryNamed);
   const judge = fakeJudge({ byName: Object.fromEntries(names.map((n) => [n, inLane("robotics", priorities[n], `${n} builds robots.`)])) });
-  await runJob({ "2026-10-16": entries }, "2026-10-16", judge, screenedAt);
+  await runShabDay(db, "2026-10-16", { entries, judge, at: screenedAt });
 }
 
 // One Legal Entity published on several days: one startup with one Signal per day, each screened that evening.
 async function sameEntityOn(dates: string[]) {
   const kran = { ...exampleEntry, name: "Beispiel Kran AG" };
   const days = Object.fromEntries(dates.map((d, i) => [d, [{ ...kran, id: `pub-kran-${i}` }]]));
-  for (const date of dates) await runJob(days, date, fakeJudge({ otherwise: inLane("robotics", 80, "Cranes.") }), `${date}T18:00:00Z`);
+  for (const date of dates) await runShabDay(db, date, { days, judge: fakeJudge({ otherwise: inLane("robotics", 80, "Cranes.") }), at: `${date}T18:00:00Z` });
 }
 
 const triageOn = (isoDate: string) => createTriage(db, { now: () => new Date(isoDate) });
@@ -135,7 +118,7 @@ describe("Momentum", () => {
   test("never goes below 1, even when every Signal is old", async () => {
     // A late run for an old publication day: the Signal dates from June, the Candidate from October.
     const old = { ...exampleEntry, name: "Beispiel Kran AG" };
-    await runJob({ "2026-06-01": [old] }, "2026-06-01", fakeJudge({ otherwise: inLane("robotics", 80, "Cranes.") }), "2026-10-20T18:00:00Z");
+    await runShabDay(db, "2026-06-01", { entries: [old], judge: fakeJudge({ otherwise: inLane("robotics", 80, "Cranes.") }), at: "2026-10-20T18:00:00Z" });
     const triage = triageOn("2026-10-21T09:00:00Z");
     const [candidate] = await triage.queue();
 

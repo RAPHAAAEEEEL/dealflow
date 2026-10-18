@@ -3,6 +3,7 @@ import type { Db } from "@/db";
 import { llmUsage, sightings } from "@/db/schema";
 import { putOnRadar } from "@/radar/radar";
 import { stageRuleRejects } from "@/screening/stage-rule";
+import { assertShabTermsAccepted } from "@/sources/shab-terms";
 import { JudgeError, type Criteria, type Judge, type Judgement, type Usage } from "@/screening/types";
 import type { Sighting } from "@/sighting";
 import { recordRun } from "./runs";
@@ -13,6 +14,7 @@ export type ShabJobDeps = {
   judge: Judge;
   criteria: Criteria;
   monthlyCapUsd: number;
+  shabTermsAcceptedOn: string | undefined;
   now: () => Date;
 };
 
@@ -26,9 +28,13 @@ export type ShabJobReport = {
   spentUsd: number;
 };
 
+// A recorded run's report. A run that broke off, or was refused, also carries the reason.
+export type ShabRunReport = Partial<ShabJobReport> & { error?: string };
+
 // Fetches one day's new entries, then screens every Sighting still waiting, including ones an
 // earlier run left behind because the month's budget was used up (docs/adr/0005). Every run is
-// recorded with its report, also one that breaks off, before the error is passed on.
+// recorded with its report, also one that breaks off or is refused for lack of the SHAB terms,
+// before the error is passed on.
 export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJobReport> {
   const report: ShabJobReport = {
     fetched: 0,
@@ -49,6 +55,7 @@ export async function runShabJob(deps: ShabJobDeps, date: string): Promise<ShabJ
       report: error === undefined ? report : { ...report, error: error instanceof Error ? error.message : String(error) },
     });
   try {
+    assertShabTermsAccepted(deps.shabTermsAcceptedOn, startedAt);
     await screenDay(deps, date, report);
   } catch (error) {
     await record(error).catch(() => {}); // a failing record must not hide the original error

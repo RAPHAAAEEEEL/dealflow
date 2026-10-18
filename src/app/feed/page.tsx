@@ -1,5 +1,6 @@
 import { requireOwner } from "../owner";
-import { getNearMisses, getTriage } from "../db";
+import { shabRunWarnings } from "@/digest/digest";
+import { getDb, getNearMisses, getTriage } from "../db";
 import { Nav, SourceNote } from "../nav";
 import { NearMissCard } from "./near-miss-card";
 import { TriageCard } from "./triage-card";
@@ -10,11 +11,22 @@ export default async function FeedPage() {
   await requireOwner();
   const queue = await (await getTriage()).queue();
   const nearMisses = await (await getNearMisses()).list();
+  const runWarnings = await shabRunWarnings(await getDb(), () => new Date());
 
   return (
     <>
       <Nav current="feed" waiting={queue.length} />
       <main className="main feed">
+        {runWarnings.length > 0 && (
+          // The Sunday Digest can be switched off together with the SHAB schedule, so the Feed warns too.
+          <div className="card run-warnings" role="status">
+            {runWarnings.map((w) => (
+              <p key={w} className="small">
+                ⚠ {w}
+              </p>
+            ))}
+          </div>
+        )}
         <h2 className="feed-title">
           {queue.length === 0 ? "Nothing to triage" : `${queue.length} Candidate${queue.length === 1 ? "" : "s"} waiting`}
         </h2>
@@ -36,7 +48,7 @@ export default async function FeedPage() {
         ) : (
           <p className="muted small">
             Screening discarded these, but they came close to a Lane. Pull one into Triage if Screening was wrong, or
-            confirm it was rightly out. Both verdicts teach the Screening Criteria.
+            confirm it was rightly out. Both decisions feed Proposals to the Screening Criteria.
           </p>
         )}
         {nearMisses.map((nearMiss) => (

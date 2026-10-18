@@ -1,5 +1,5 @@
 {
-  "id": "e4e43a25-78cb-444e-844f-b49c12a6119a",
+  "id": "16c6880c-dc38-4fdf-a5b0-f56cb7236c94",
   "prevId": "3ac55f02-72fe-444e-acf0-fefcbc02215f",
   "version": "7",
   "dialect": "postgresql",
@@ -271,8 +271,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.near_miss_reviews": {
-      "name": "near_miss_reviews",
+    "public.near_miss_decisions": {
+      "name": "near_miss_decisions",
       "schema": "",
       "columns": {
         "id": {
@@ -288,14 +288,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "verdict": {
-          "name": "verdict",
+        "decision": {
+          "name": "decision",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "reviewed_at": {
-          "name": "reviewed_at",
+        "decided_at": {
+          "name": "decided_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
@@ -303,9 +303,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "near_miss_reviews_sighting_id_sightings_id_fk": {
-          "name": "near_miss_reviews_sighting_id_sightings_id_fk",
-          "tableFrom": "near_miss_reviews",
+        "near_miss_decisions_sighting_id_sightings_id_fk": {
+          "name": "near_miss_decisions_sighting_id_sightings_id_fk",
+          "tableFrom": "near_miss_decisions",
           "tableTo": "sightings",
           "columnsFrom": [
             "sighting_id"
@@ -319,8 +319,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "near_miss_reviews_sighting_id_unique": {
-          "name": "near_miss_reviews_sighting_id_unique",
+        "near_miss_decisions_sighting_id_unique": {
+          "name": "near_miss_decisions_sighting_id_unique",
           "nullsNotDistinct": false,
           "columns": [
             "sighting_id"

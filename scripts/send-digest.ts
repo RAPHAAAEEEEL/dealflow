@@ -24,7 +24,7 @@ try {
     db,
     now: () => new Date(),
     monthlyCapUsd: Number(process.env.DEALFLOW_MONTHLY_CAP_USD ?? 10),
-    shabTermsAcceptedOn: process.env.SHAB_TERMS_ACCEPTED_ON ?? "",
+    shabTermsAcceptedOn: process.env.SHAB_TERMS_ACCEPTED_ON,
     appUrl: process.env.DEALFLOW_APP_URL ?? "http://localhost:3000",
   });
   if (print) {
@@ -32,7 +32,7 @@ try {
   } else {
     await sendWithResend({ apiKey: apiKey!, to: to!, subject: digest.subject, text: digest.text });
     // Counts only: the CI log of a public repo never shows names (docs/adr/0007).
-    console.log(`Digest sent with ${digest.problems} warning${digest.problems === 1 ? "" : "s"}.`);
+    console.log(`Digest sent with ${digest.warnings} warning${digest.warnings === 1 ? "" : "s"}.`);
   }
 } catch (error) {
   if (!CI) console.error(error);

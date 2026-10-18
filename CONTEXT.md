@@ -65,8 +65,8 @@ The chronological record of everything about one startup: its Signals, Triage de
 _Avoid_: History, log, feed (the Feed is a view)
 
 **Near Miss**:
-A Sighting that Screening discarded although it came close to a Lane. The Feed shows the week's closest ones; the Owner either pulls one into Triage, which makes it a Candidate, or confirms it was rightly out. Both verdicts feed Proposals to the Screening Criteria.
-_Avoid_: False negative, borderline case, reject
+A Sighting that Screening discarded although it came close to a Lane, of a Legal Entity the radar doesn't know yet. The Feed shows the week's closest ones. The Owner decides on each: Pulled In makes it a Candidate for Triage, Rightly Out confirms the discard. Both decisions feed Proposals to the Screening Criteria.
+_Avoid_: False negative, borderline case, reject, review, verdict
 
 **Closeness**:
 How close a discarded Sighting came to its nearest Lane, from 0 to 100. Screening sets it; only a Sighting with a Closeness of at least 20 can be a Near Miss.
@@ -149,7 +149,7 @@ The email the Owner gets every Sunday: the Candidates waiting for Triage, the we
 _Avoid_: Newsletter, report, notification
 
 **Status Check**:
-The part of the Digest that says whether the radar ran as it should: missing or broken Source runs, Sightings waiting for Screening, Claude spend against the cap, and when the SHAB terms must be accepted again.
+The part of the Digest that says whether the radar ran as it should: missing or broken Source runs, Sightings waiting for Screening, Claude spend against the cap, and when the SHAB terms must be accepted again. The Feed repeats the warnings about runs, because the Digest itself can stop with them.
 _Avoid_: Health check, monitoring
 
 ### Outcomes and Track Record

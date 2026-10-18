@@ -507,9 +507,10 @@ stage_11() {
 stage_12() {
   stage "First digest"
   say "Let's send this week's digest now, so you know it arrives."
-  git fetch --quiet origin main
+  git fetch --quiet origin main 2>/dev/null || warn "Couldn't reach GitHub; checking the last known state of main."
   if ! git cat-file -e origin/main:.github/workflows/digest.yml 2>/dev/null; then
-    warn "GitHub's main branch doesn't contain the digest yet. Ask Claude to merge and push slice 4, then: ONLY=12"
+    SKIPPED+=("First digest: push the digest to GitHub's main branch, then run ONLY=12")
+    warn "GitHub's main branch doesn't contain the digest workflow yet. Once it does: ONLY=12"
     pause
     return
   fi

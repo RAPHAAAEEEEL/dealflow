@@ -8,5 +8,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Each test starts its own in-memory Postgres. The first one per file also compiles PGlite, which
+    // can pass the default 10 seconds when several files start at once on a busy machine.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 });

@@ -23,6 +23,7 @@ function run(days: Record<string, FakeRegistration[]>, date: string, judge: Judg
       judge,
       criteria,
       monthlyCapUsd: opts.monthlyCapUsd ?? 10,
+      shabTermsAcceptedOn: "2026-10-01",
       now: () => new Date(opts.now ?? "2026-10-17T06:00:00Z"),
     },
     date,
@@ -134,10 +135,39 @@ describe("SHAB job", () => {
       fetchNewRegistrations: () => Promise.reject(new Error("SHAB answered 503")),
       fetchPublicationXml: () => Promise.reject(new Error("not reached")),
     });
-    const deps = { db, shab: shabDown, judge: fakeJudge(), criteria, monthlyCapUsd: 10, now: () => new Date("2026-10-17T06:00:00Z") };
+    const deps = {
+      db,
+      shab: shabDown,
+      judge: fakeJudge(),
+      criteria,
+      monthlyCapUsd: 10,
+      shabTermsAcceptedOn: "2026-10-01",
+      now: () => new Date("2026-10-17T06:00:00Z"),
+    };
 
     await expect(runShabJob(deps, "2026-10-16")).rejects.toThrow("SHAB answered 503");
     expect(await latestRuns(db)).toMatchObject([{ job: "shab", publicationDate: "2026-10-16", report: { error: "SHAB answered 503" } }]);
+  });
+
+  test.each([
+    [undefined, "The SHAB terms have not been accepted yet."],
+    ["2026-07-01", "The SHAB terms, accepted on 2026-07-01, ran out on 2026-09-29."],
+  ])("refuses to run without the Owner's current acceptance of the SHAB terms (accepted on %s)", async (acceptedOn, reason) => {
+    const deps = {
+      db,
+      shab: createShabSource(fakeShabHttp({ "2026-10-16": [exampleEntry] })),
+      judge: fakeJudge({ otherwise: inLane("robotics", 80, "Robots.") }),
+      criteria,
+      monthlyCapUsd: 10,
+      shabTermsAcceptedOn: acceptedOn,
+      now: () => new Date("2026-10-17T06:00:00Z"),
+    };
+
+    await expect(runShabJob(deps, "2026-10-16")).rejects.toThrow(reason);
+    expect({ radar: await radarNames(), runs: await latestRuns(db) }).toMatchObject({
+      radar: [],
+      runs: [{ publicationDate: "2026-10-16", report: { error: reason } }],
+    });
   });
 
   test("logs only counts in public, never names or error texts", () => {

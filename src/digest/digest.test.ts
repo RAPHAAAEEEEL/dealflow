@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { openDb, type Db } from "@/db";
-import { runShabJob } from "@/jobs/shab-job";
+import { entryNamed as entry, runShabDay } from "@/jobs/shab-job.testing";
 import { fakeJudge, inLane, nearMiss, outOfScope } from "@/screening/judge.testing";
 import type { Judge } from "@/screening/types";
-import { createShabSource, type ShabHttp } from "@/sources/shab";
-import { exampleEntry, fakeShabHttp, type FakeRegistration } from "@/sources/shab.testing";
+import type { ShabHttp } from "@/sources/shab";
 import { buildDigest } from "./digest";
 
 let db: Db;
@@ -15,28 +14,16 @@ beforeEach(async () => {
 const SUNDAY = "2026-10-18T17:00:00Z";
 const WEEK = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16"]; // Mon to Fri
 
-const entry = (name: string): FakeRegistration => ({ ...exampleEntry, id: `pub-${name}`, name, uid: `CHE-${name}` });
-const dayAfter = (date: string) => new Date(Date.parse(date) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const shabDown: ShabHttp = {
   fetchNewRegistrations: () => Promise.reject(new Error("SHAB answered 503")),
   fetchPublicationXml: () => Promise.reject(new Error("not reached")),
 };
 
-// One scheduled SHAB run for a register day, the morning after it, the way production records it.
-async function runDay(
-  date: string,
-  { entries = [], judge = fakeJudge(), http, at }: { entries?: FakeRegistration[]; judge?: Judge; http?: ShabHttp; at?: string } = {},
-) {
-  const deps = {
-    db,
-    shab: createShabSource(http ?? fakeShabHttp({ [date]: entries })),
-    judge,
-    criteria: { version: 2, text: "Lanes." },
-    monthlyCapUsd: 10,
-    now: () => new Date(at ?? `${dayAfter(date)}T05:30:00Z`),
-  };
-  await runShabJob(deps, date).catch(() => {}); // a broken run is recorded; the digest reports it
-}
+// A SHAB run, the morning after the register day, as scheduled.
+const runDay = (date: string, opts: Parameters<typeof runShabDay>[2] = {}) => runShabDay(db, date, opts);
+
+// A run that breaks off because SHAB is down. It is recorded with the reason before the error passes on.
+const brokenDay = (date: string) => runShabDay(db, date, { http: shabDown }).catch(() => {});
 
 const digest = (opts: { monthlyCapUsd?: number; shabTermsAcceptedOn?: string } = {}) =>
   buildDigest({
@@ -64,7 +51,7 @@ describe("Sunday digest", () => {
 
     expect(await digest()).toEqual({
       subject: "Dealflow: 1 Candidate, 1 Near Miss · all clear",
-      problems: 0,
+      warnings: 0,
       text: `Dealflow · week to Sun 18 Oct 2026
 
 TRIAGE
@@ -84,7 +71,7 @@ STATUS CHECK
 ✓ Claude spend in October: $0.03 of $10.00
 ✓ SHAB terms accepted on 2026-10-17, run out on 2027-01-15 (in 89 days)
 
-Register data from SHAB, www.shab.ch. Not an official publication.
+Register data from SHAB, the Swiss Official Gazette of Commerce (Amtsblattportal), www.shab.ch. Not an official publication.
 `,
     });
   });
@@ -101,36 +88,45 @@ Register data from SHAB, www.shab.ch. Not an official publication.
   });
 
   test("flags a register day whose run broke off, with the reason", async () => {
-    for (const date of WEEK) await runDay(date, date === "2026-10-15" ? { http: shabDown } : {});
+    for (const date of WEEK) await (date === "2026-10-15" ? brokenDay(date) : runDay(date));
 
-    const { subject, problems, text } = await digest();
+    const { subject, warnings, text } = await digest();
 
-    expect({ subject, problems }).toEqual({ subject: "Dealflow: 0 Candidates, 0 Near Misses · 1 warning", problems: 1 });
+    expect({ subject, warnings }).toEqual({ subject: "Dealflow: 0 Candidates, 0 Near Misses · 1 warning", warnings: 1 });
     expect(text).toContain("⚠ SHAB Thu 15 Oct: the run broke off (SHAB answered 503). Run it again in GitHub Actions with the date 2026-10-15.\n");
   });
 
   test("counts a day as screened once a later run for it went through", async () => {
-    for (const date of WEEK) await runDay(date, date === "2026-10-15" ? { http: shabDown } : {});
+    for (const date of WEEK) await (date === "2026-10-15" ? brokenDay(date) : runDay(date));
     await runDay("2026-10-15", { at: "2026-10-16T09:00:00Z" });
 
-    expect((await digest()).problems).toBe(0);
+    expect((await digest()).warnings).toBe(0);
+  });
+
+  test("names lapsed SHAB terms as the reason a day wasn't screened", async () => {
+    for (const date of WEEK.slice(0, 4)) await runDay(date);
+    await runDay("2026-10-16", { shabTermsAcceptedOn: "2026-07-19" }).catch(() => {}); // refused on 2026-10-17
+
+    expect((await digest({ shabTermsAcceptedOn: "2026-07-19" })).text).toContain(
+      "⚠ SHAB Fri 16 Oct: the run broke off (The SHAB terms, accepted on 2026-07-19, ran out on 2026-10-17). Run it again in GitHub Actions with the date 2026-10-16.\n",
+    );
   });
 
   test("flags a register day without a run", async () => {
     for (const date of WEEK) if (date !== "2026-10-13") await runDay(date);
 
-    const { problems, text } = await digest();
+    const { warnings, text } = await digest();
 
-    expect({ problems, text }).toMatchObject({ problems: 1, text: expect.stringContaining("⚠ SHAB Tue 13 Oct: no run.\n") });
+    expect({ warnings, text }).toMatchObject({ warnings: 1, text: expect.stringContaining("⚠ SHAB Tue 13 Oct: no run.\n") });
     expect(text).not.toContain("GitHub stops");
   });
 
   test("points to GitHub's schedule stop when the last two register days have no run", async () => {
     for (const date of WEEK.slice(0, 3)) await runDay(date);
 
-    const { problems, text } = await digest();
+    const { warnings, text } = await digest();
 
-    expect(problems).toBe(2);
+    expect(warnings).toBe(2);
     expect(text).toContain(
       "⚠ SHAB Thu 15 Oct: no run.\n⚠ SHAB Fri 16 Oct: no run.\n  GitHub stops scheduled workflows after 60 days without activity in the repository. Check Actions → SHAB job, and enable it again if it says disabled.\n",
     );
@@ -142,9 +138,9 @@ Register data from SHAB, www.shab.ch. Not an official publication.
       await runDay(date, date === "2026-10-16" ? { entries: [entry("Beispiel A AG"), entry("Beispiel B AG")], judge: keyRejected } : {});
     }
 
-    const { problems, text } = await digest();
+    const { warnings, text } = await digest();
 
-    expect(problems).toBe(1);
+    expect(warnings).toBe(1);
     expect(text).toContain("⚠ 2 entries wait for screening. Latest error: Beispiel B AG: 401 invalid x-api-key\n");
   });
 
@@ -154,9 +150,9 @@ Register data from SHAB, www.shab.ch. Not an official publication.
       await runDay(date, { entries, judge: fakeJudge({ costUsd: 0.004 }) });
     }
 
-    const { problems, text } = await digest({ monthlyCapUsd: 0.01 });
+    const { warnings, text } = await digest({ monthlyCapUsd: 0.01 });
 
-    expect(problems).toBe(1);
+    expect(warnings).toBe(1);
     expect(text).toContain(
       "⚠ Claude spend in October: $0.01 of $0.01, 80% of the cap. Screening stops at the cap; what waits is screened next month.\n",
     );

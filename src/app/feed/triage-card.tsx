@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import type { RadarRow } from "@/radar/radar";
 import { LANE_NAMES } from "@/screening/types";
 import { CLAIMS, OWNER_FACTORS, type Claim, type OwnerFactor } from "@/triage/types";
-import { decide, type DecideState } from "../actions";
+import { decide, type ActionState } from "../actions";
 
 const factorKeys = Object.keys(OWNER_FACTORS) as OwnerFactor[];
 const claimKeys = Object.keys(CLAIMS) as Claim[];
@@ -12,7 +12,7 @@ const claimKeys = Object.keys(CLAIMS) as Claim[];
 // One Candidate with its Triage form. Every Factor and both Calls start empty on purpose
 // (docs/adr/0004): the numbers in the Track Record must be the Owner's own.
 export function TriageCard({ candidate }: { candidate: RadarRow }) {
-  const [state, formAction, pending] = useActionState<DecideState, FormData>(decide, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(decide, {});
   const [factors, setFactors] = useState<Partial<Record<OwnerFactor, number>>>({});
   const [calls, setCalls] = useState<Partial<Record<Claim, number>>>({});
   const [rationale, setRationale] = useState("");

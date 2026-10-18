@@ -1,17 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { NearMissError } from "@/triage/near-misses";
+import { NEAR_MISS_DECISIONS, NearMissError } from "@/triage/near-misses";
 import { TriageError } from "@/triage/triage";
 import { CLAIMS, OWNER_FACTORS, type Claim, type OwnerFactor, type TriageInput } from "@/triage/types";
 import { getNearMisses, getTriage } from "./db";
 import { isOwner } from "./owner";
 
-export type DecideState = { error?: string };
+// What a form action reports back to its card: nothing when it worked, else a message to show.
+export type ActionState = { error?: string };
 
 // Turns the Triage card's form into a decision. Validation lives in the Triage module; its
 // TriageError messages go back to the card unchanged.
-export async function decide(_: DecideState, form: FormData): Promise<DecideState> {
+export async function decide(_: ActionState, form: FormData): Promise<ActionState> {
   if (!(await isOwner())) return { error: "Only the Owner can do Triage. Sign in again." };
   const startupId = String(form.get("startupId"));
   const decision = String(form.get("decision"));
@@ -46,18 +47,14 @@ export async function decide(_: DecideState, form: FormData): Promise<DecideStat
   return {};
 }
 
-export type NearMissState = { error?: string };
-
-// The Owner's verdict on a Near Miss: pull it into Triage, or confirm Screening was right to discard it.
-export async function reviewNearMiss(_: NearMissState, form: FormData): Promise<NearMissState> {
-  if (!(await isOwner())) return { error: "Only the Owner can judge Near Misses. Sign in again." };
+// The Owner's decision on a Near Miss: pull it into Triage, or confirm Screening was right to discard it.
+export async function decideNearMiss(_: ActionState, form: FormData): Promise<ActionState> {
+  if (!(await isOwner())) return { error: "Only the Owner can decide on Near Misses. Sign in again." };
   const sightingId = String(form.get("sightingId"));
-  const verdict = String(form.get("verdict"));
-  const nearMisses = await getNearMisses();
+  const decision = NEAR_MISS_DECISIONS.find((d) => d === form.get("decision"));
+  if (!decision) return { error: `Unknown decision "${form.get("decision")}".` };
   try {
-    if (verdict === "Pulled In") await nearMisses.pullIn(sightingId);
-    else if (verdict === "Rightly Out") await nearMisses.rightlyOut(sightingId);
-    else return { error: `Unknown verdict "${verdict}".` };
+    await (await getNearMisses()).decide(sightingId, decision);
   } catch (error) {
     if (error instanceof NearMissError) return { error: error.message };
     throw error;

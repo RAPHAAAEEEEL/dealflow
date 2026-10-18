@@ -2,7 +2,8 @@ import { date, doublePrecision, integer, jsonb, pgTable, text, timestamp, unique
 import type { Stage, StartupStatus } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
 import type { Sighting } from "@/sighting";
-import type { NearMissVerdict } from "@/triage/near-misses";
+import type { ShabRunReport } from "@/jobs/shab-job";
+import type { NearMissDecision } from "@/triage/near-misses";
 import type { Claim, TriageDecision } from "@/triage/types";
 
 // Terms follow CONTEXT.md. Founders' names are never stored (docs/adr/0003). Company names are
@@ -96,12 +97,12 @@ export const triageDecisions = pgTable("triage_decisions", {
   momentum: integer("momentum"),
 });
 
-// The Owner's verdict on a Near Miss: Screening should have kept it, or rightly discarded it.
-export const nearMissReviews = pgTable("near_miss_reviews", {
+// The Owner's decision on a Near Miss: Screening should have kept it, or was right to discard it.
+export const nearMissDecisions = pgTable("near_miss_decisions", {
   id: uuid("id").primaryKey().defaultRandom(),
   sightingId: uuid("sighting_id").notNull().unique().references(() => sightings.id),
-  verdict: text("verdict").$type<NearMissVerdict>().notNull(),
-  reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull(),
+  decision: text("decision").$type<NearMissDecision>().notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }).notNull(),
 });
 
 // Calls never change. A later Call on the same startup and Claim is a Revision (CONTEXT.md).
@@ -123,5 +124,5 @@ export const jobRuns = pgTable("job_runs", {
   publicationDate: date("publication_date").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
-  report: jsonb("report").notNull(),
+  report: jsonb("report").$type<ShabRunReport>().notNull(),
 });
