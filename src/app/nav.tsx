@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export function Nav({ current, waiting }: { current: "feed" | "startups"; waiting: number }) {
+export function Nav({ current, waiting }: { current: "feed" | "startups" | "add"; waiting: number }) {
   return (
     <header className="top">
       <h1>Dealflow</h1>
@@ -10,6 +10,9 @@ export function Nav({ current, waiting }: { current: "feed" | "startups"; waitin
         </Link>
         <Link href="/" className={`tab ${current === "startups" ? "on" : ""}`}>
           All startups
+        </Link>
+        <Link href="/add" className={`tab ${current === "add" ? "on" : ""}`}>
+          Add
         </Link>
       </nav>
     </header>

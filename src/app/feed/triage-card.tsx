@@ -34,7 +34,20 @@ export function TriageCard({ candidate }: { candidate: RadarRow }) {
         <span className="chip lane">{LANE_NAMES[candidate.lane]}</span>
       </div>
       <p>{candidate.oneLiner}</p>
-      {candidate.latestSignal && <p className="small muted official">{candidate.latestSignal.text}</p>}
+      {candidate.latestSignal && (
+        // Only register text is a quote (SHAB terms); other Signals are the radar's or the Owner's own words.
+        <p className={`small muted ${candidate.latestSignal.source === "SHAB" ? "official" : ""}`}>
+          {candidate.latestSignal.text}
+          {candidate.latestSignal.url && (
+            <>
+              {" "}
+              <a href={candidate.latestSignal.url} target="_blank" rel="noreferrer">
+                Source
+              </a>
+            </>
+          )}
+        </p>
+      )}
       <p className="small muted">
         {candidate.hq}, {candidate.country} · first seen {candidate.firstSeen}
       </p>

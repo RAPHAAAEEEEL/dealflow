@@ -1,16 +1,18 @@
-import { asc, eq, gte, isNull, max, sum } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db";
-import { llmUsage, sightings } from "@/db/schema";
+import { sightings } from "@/db/schema";
 import { putOnRadar } from "@/radar/radar";
+import { monthlyBudget } from "@/screening/budget";
 import { stageRuleRejects } from "@/screening/stage-rule";
-import { assertShabTermsAccepted } from "@/sources/shab-terms";
 import { JudgeError, type Criteria, type Judge, type Judgement, type Usage } from "@/screening/types";
-import type { Sighting } from "@/sighting";
+import { shabPayload, type ShabSighting } from "@/sighting";
+import { shabDiscovery } from "@/sources/shab";
+import { assertShabTermsAccepted } from "@/sources/shab-terms";
 import { recordRun } from "./runs";
 
 export type ShabJobDeps = {
   db: Db;
-  shab: { fetchSightings(date: string): Promise<Sighting[]> };
+  shab: { fetchSightings(date: string): Promise<ShabSighting[]> };
   judge: Judge;
   criteria: Criteria;
   monthlyCapUsd: number;
@@ -90,23 +92,23 @@ async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport)
     if (rejected && inserted.length) report.discarded++;
   }
 
-  const budget = await monthlyBudget(deps);
+  const budget = await monthlyBudget(db, deps);
   const waiting = await db
     .select({ id: sightings.id, payload: sightings.payload })
     .from(sightings)
-    .where(isNull(sightings.screenedAt))
+    .where(and(eq(sightings.source, "SHAB"), isNull(sightings.screenedAt)))
     .orderBy(asc(sightings.publishedOn), asc(sightings.fetchedAt));
 
-  for (const { id, payload: sighting } of waiting) {
-    if (!sighting) continue;
+  for (const { id, payload } of waiting) {
+    if (!payload) continue;
+    const sighting = shabPayload(payload);
     if (!budget.allows()) {
       report.waitingForBudget++;
       continue;
     }
 
     const recordCost = async (usage: Usage) => {
-      await db.insert(llmUsage).values({ at: deps.now(), purpose: "screening", ...usage });
-      budget.spend(usage.costUsd);
+      await budget.record("screening", usage);
       report.spentUsd += usage.costUsd;
     };
 
@@ -125,7 +127,7 @@ async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport)
 
     const screened = { ...stamp(), screeningReason: judgement.reason, screenedBy: judgement.usage.model };
     if (judgement.inLane) {
-      await putOnRadar(db, { sightingId: id, sighting, placement: judgement, at: screened.screenedAt, screening: screened });
+      await putOnRadar(db, { sightingId: id, discovery: shabDiscovery(sighting), placement: judgement, at: screened.screenedAt, screening: screened });
       report.candidates++;
     } else {
       const { nearestLane, closeness, oneLiner } = judgement;
@@ -136,24 +138,6 @@ async function screenDay(deps: ShabJobDeps, date: string, report: ShabJobReport)
       report.discarded++;
     }
   }
-}
-
-// A call is allowed only if the month's spend plus the priciest call seen so far stays within the cap,
-// so a run stops before it overspends rather than after.
-async function monthlyBudget({ db, monthlyCapUsd, now }: ShabJobDeps) {
-  const t = now();
-  const monthStart = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1));
-  const [{ spent }] = await db.select({ spent: sum(llmUsage.costUsd) }).from(llmUsage).where(gte(llmUsage.at, monthStart));
-  const [{ priciest }] = await db.select({ priciest: max(llmUsage.costUsd) }).from(llmUsage);
-  let spentThisMonth = Number(spent ?? 0);
-  let callEstimate = Number(priciest ?? 0);
-  return {
-    allows: () => spentThisMonth + callEstimate <= monthlyCapUsd,
-    spend(costUsd: number) {
-      spentThisMonth += costUsd;
-      callEstimate = Math.max(callEstimate, costUsd);
-    },
-  };
 }
 
 // What may appear in a public CI log: counts only, no names and no error texts.

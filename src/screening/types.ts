@@ -1,4 +1,4 @@
-import type { Sighting } from "@/sighting";
+import type { ShabSighting } from "@/sighting";
 
 export const LANES = ["robotics", "agents", "manufacturing"] as const;
 export type Lane = (typeof LANES)[number];
@@ -37,7 +37,7 @@ export type Judgement =
 
 // The boundary to Claude. Tests replace it with a fake; production uses Claude Haiku.
 export type Judge = {
-  judge(sighting: Sighting, criteria: Criteria): Promise<Judgement>;
+  judge(sighting: ShabSighting, criteria: Criteria): Promise<Judgement>;
 };
 
 // Thrown when a call was billed but gave no usable Judgement, so its cost still counts against the budget.

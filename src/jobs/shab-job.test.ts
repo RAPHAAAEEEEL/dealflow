@@ -53,10 +53,12 @@ describe("SHAB job", () => {
         country: "CH",
         firstSeen: "2026-10-16",
         oneLiner: "Robots that lay rebar on construction sites.",
+        website: null,
         latestSignal: {
           date: "2026-10-16",
           source: "SHAB",
           text: "New registration: Beispiel Robotik AG, Zürich (ZH). Purpose: Entwicklung und Vertrieb von Robotern, die auf Baustellen Bewehrungseisen verlegen. Share capital CHF 100,000.",
+          url: "https://www.shab.ch/#!/search/publications/detail/pub-robotik",
         },
         roundCall: null,
       },

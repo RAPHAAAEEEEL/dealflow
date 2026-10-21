@@ -3,8 +3,8 @@ import { dayOf } from "@/dates";
 import type { Db } from "@/db";
 import { calls, legalEntities, signals, sightings, startups, triageDecisions } from "@/db/schema";
 import type { Lane } from "@/screening/types";
-import type { Sighting } from "@/sighting";
 import { CLAIMS, scorecardFrom, type Claim, type Scorecard, type TriageDecision } from "@/triage/types";
+import { nameKey, websiteDomain } from "./identity";
 
 export type Stage = "Pre-round" | "Pre-seed" | "Seed";
 
@@ -27,12 +27,13 @@ export type RadarRow = {
   country: string;
   firstSeen: string;
   oneLiner: string;
-  latestSignal: { date: string; source: string; text: string } | null;
+  website: string | null;
+  latestSignal: { date: string; source: string; text: string; url: string | null } | null;
   roundCall: number | null; // the Round Call: the first Call on an Institutional Round within 12 months
 };
 
 export type TimelineEntry =
-  | { date: string; kind: "signal"; source: string; text: string }
+  | { date: string; kind: "signal"; source: string; text: string; url: string | null }
   | { date: string; kind: "triage" | "call"; text: string };
 
 export type StartupProfile = RadarRow & {
@@ -70,7 +71,8 @@ export function createRadar(db: Db) {
           country: r.country,
           firstSeen: r.firstSeen,
           oneLiner: r.oneLiner,
-          latestSignal: s ? { date: s.date, source: s.source, text: s.text } : null,
+          website: r.website,
+          latestSignal: s ? { date: s.date, source: s.source, text: s.text, url: s.url } : null,
           roundCall: roundCalls.find((c) => c.startupId === r.id)?.probability ?? null,
         };
       });
@@ -87,7 +89,7 @@ export function createRadar(db: Db) {
       const startupSignals = await db.select().from(signals).where(eq(signals.startupId, id));
 
       const timeline: TimelineEntry[] = [
-        ...startupSignals.map((s) => ({ date: s.date, kind: "signal" as const, source: s.source, text: s.text })),
+        ...startupSignals.map((s) => ({ date: s.date, kind: "signal" as const, source: s.source, text: s.text, url: s.url })),
         ...(decision
           ? [{ date: dayOf(decision.decidedAt), kind: "triage" as const, text: [decision.decision, decision.rationale].filter(Boolean).join(": ") }]
           : []),
@@ -105,84 +107,98 @@ export function createRadar(db: Db) {
   };
 }
 
-// Where a startup goes on the radar: from Screening, or from the Owner pulling in a Near Miss.
+// Where a startup goes on the radar: from Screening, from the Owner pulling in a Near Miss, or from Quick Add.
 export type Placement = { lane: Lane; secondaryLane: Lane | null; oneLiner: string; priority: number };
 
-// Screening's record on the Sighting. A pulled-in Near Miss keeps Claude's original record.
-export type ScreeningRecord = { screenedAt: Date; criteriaVersion: number; screeningReason: string; screenedBy: string };
+// What a Source tells the radar about a startup, and the Signal it brings.
+export type Discovery = {
+  name: string;
+  hq: string;
+  country: string; // ISO 3166 code, such as CH or DE
+  stage: Stage;
+  website: string | null;
+  firstSeen: string;
+  legalEntity: { name: string; uid: string | null; legalForm: string; seat: string; registeredOn: string } | null;
+  signal: { date: string; source: string; text: string; url: string | null };
+};
 
-// Puts a Sighting on the radar. A Legal Entity the radar already knows gets the new Signal on its
-// Startup; otherwise a new Candidate is created with its Legal Entity and first Signal. `at` starts
-// the Candidate's four weeks. The Sighting is marked in the same transaction, so if anything fails it
+// Screening's record on the Sighting. A pulled-in Near Miss keeps Claude's original record.
+export type ScreeningRecord = { screenedAt: Date; criteriaVersion: number | null; screeningReason: string; screenedBy: string };
+
+// Puts a Sighting on the radar. A startup the radar already knows (docs: identity.ts) gets the new
+// Signal; a waiting or Expired one goes back into Triage with a fresh four weeks from `at`. Otherwise a
+// new Candidate is created. The Sighting is marked in the same transaction, so if anything fails it
 // stays as it was instead of becoming a Signal without a Startup.
 export async function putOnRadar(
   db: Db,
   {
     sightingId,
-    sighting,
+    discovery: d,
     placement,
     at,
     screening,
-  }: { sightingId: string; sighting: Sighting; placement: Placement; at: Date; screening?: ScreeningRecord },
-) {
-  const entity = sighting.legalEntity;
-  await db.transaction(async (tx) => {
-    const [known] = entity.uid
-      ? await tx
-          .select({ startupId: legalEntities.startupId, status: startups.status })
-          .from(legalEntities)
-          .innerJoin(startups, eq(startups.id, legalEntities.startupId))
-          .where(eq(legalEntities.uid, entity.uid))
-      : [];
-    let startupId = known?.startupId;
-    if (startupId) {
-      // Something new happened: a waiting or Expired startup goes back into Triage with a fresh four weeks.
+  }: { sightingId: string; discovery: Discovery; placement: Placement; at: Date; screening?: ScreeningRecord },
+): Promise<{ startupId: string; known: boolean }> {
+  return db.transaction(async (tx) => {
+    const known = await findStartup(tx, d);
+    let startupId: string;
+    if (known) {
+      startupId = known.id;
       if (known.status === "Candidate" || known.status === "Expired") {
-        await tx.update(startups).set({ status: "Candidate", statusChangedAt: at }).where(eq(startups.id, startupId));
+        await tx
+          .update(startups)
+          .set({ status: "Candidate", statusChangedAt: at, priority: Math.max(known.priority, placement.priority) })
+          .where(eq(startups.id, startupId));
       }
+      if (!known.website && websiteDomain(d.website)) await tx.update(startups).set({ website: d.website }).where(eq(startups.id, startupId));
     } else {
       const [startup] = await tx
         .insert(startups)
         .values({
-          name: entity.name,
+          name: d.name,
           lane: placement.lane,
           secondaryLane: placement.secondaryLane,
-          stage: "Pre-round",
+          stage: d.stage,
           status: "Candidate",
           statusChangedAt: at,
           priority: placement.priority,
-          hq: entity.seat.replace(/\s*\([A-Z]{2}\)$/, ""),
-          country: "CH",
+          hq: d.hq,
+          country: d.country,
           oneLiner: placement.oneLiner,
-          firstSeen: sighting.publishedOn,
+          website: websiteDomain(d.website) ? d.website : null,
+          firstSeen: d.firstSeen,
         })
         .returning({ id: startups.id });
       startupId = startup.id;
-      await tx.insert(legalEntities).values({
-        startupId,
-        name: entity.name,
-        uid: entity.uid,
-        legalForm: entity.legalForm,
-        seat: entity.seat,
-        registeredOn: sighting.publishedOn,
-      });
     }
-    await tx.insert(signals).values({
-      startupId,
-      sightingId,
-      date: sighting.publishedOn,
-      source: sighting.source,
-      text: registrationText(sighting),
-    });
+    if (d.legalEntity && !(known && d.legalEntity.uid && known.uids.includes(d.legalEntity.uid))) {
+      await tx.insert(legalEntities).values({ startupId, ...d.legalEntity }).onConflictDoNothing();
+    }
+    await tx.insert(signals).values({ startupId, sightingId, ...d.signal });
     await tx
       .update(sightings)
       .set({ ...screening, screening: "signal", startupId })
       .where(eq(sightings.id, sightingId));
+    return { startupId, known: Boolean(known) };
   });
 }
 
-// The Signal text for a new registration. It quotes the register, so it is shown apart from the radar's own words (SHAB terms).
-export function registrationText({ legalEntity: e }: Sighting) {
-  const capital = e.capitalChf === null ? "" : ` Share capital CHF ${e.capitalChf.toLocaleString("en-US")}.`;
-  return `New registration: ${e.name}, ${e.seat}. Purpose: ${e.purpose || "none given."}${capital}`;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+// The radar holds hundreds of startups, not millions, so matching in memory keeps the rule in one place.
+async function findStartup(tx: Tx, d: Discovery) {
+  const all = await tx
+    .select({ id: startups.id, name: startups.name, website: startups.website, status: startups.status, priority: startups.priority })
+    .from(startups);
+  const entities = await tx.select({ startupId: legalEntities.startupId, name: legalEntities.name, uid: legalEntities.uid }).from(legalEntities);
+  const withEntities = all.map((s) => ({ ...s, entities: entities.filter((e) => e.startupId === s.id) }));
+
+  const uid = d.legalEntity?.uid;
+  const domain = websiteDomain(d.website);
+  const keys = new Set([nameKey(d.name), ...(d.legalEntity ? [nameKey(d.legalEntity.name)] : [])]);
+  const match =
+    (uid && withEntities.find((s) => s.entities.some((e) => e.uid === uid))) ||
+    (domain && withEntities.find((s) => websiteDomain(s.website) === domain)) ||
+    withEntities.find((s) => keys.has(nameKey(s.name)) || s.entities.some((e) => keys.has(nameKey(e.name))));
+  return match ? { ...match, uids: match.entities.map((e) => e.uid).filter(Boolean) as string[] } : null;
 }

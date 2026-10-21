@@ -22,6 +22,7 @@ export const startups = pgTable("startups", {
   hq: text("hq").notNull(),
   country: text("country").notNull(),
   oneLiner: text("one_liner").notNull(),
+  website: text("website"), // the startup's own site, never a LinkedIn page
   firstSeen: date("first_seen").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -44,7 +45,7 @@ export const sightings = pgTable(
     source: text("source").notNull(),
     externalId: text("external_id").notNull(),
     publishedOn: date("published_on").notNull(),
-    url: text("url").notNull(),
+    url: text("url"), // null when there is no link worth keeping, such as a LinkedIn profile
     payload: jsonb("payload").$type<Sighting>(), // null once discarded before Claude
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
     screenedAt: timestamp("screened_at", { withTimezone: true }),
@@ -68,6 +69,7 @@ export const signals = pgTable("signals", {
   date: date("date").notNull(),
   source: text("source").notNull(),
   text: text("text").notNull(),
+  url: text("url"),
 });
 
 export const llmUsage = pgTable("llm_usage", {

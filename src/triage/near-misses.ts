@@ -2,8 +2,10 @@ import { and, desc, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import { dayOf, daysBefore } from "@/dates";
 import type { Db } from "@/db";
 import { legalEntities, nearMissDecisions, sightings } from "@/db/schema";
-import { putOnRadar, registrationText } from "@/radar/radar";
+import { putOnRadar } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
+import { shabPayload } from "@/sighting";
+import { registrationText, shabDiscovery } from "@/sources/shab";
 
 // The Owner's two answers to a Near Miss: Screening should have kept it, or was right to discard it.
 export const NEAR_MISS_DECISIONS = ["Pulled In", "Rightly Out"] as const;
@@ -41,6 +43,7 @@ const PULLED_IN_PRIORITY = 100; // the Owner asked for it, so it comes first in 
 // Discarded by Claude with a nearest Lane, not decided yet, and of a Legal Entity the radar doesn't
 // know: a known startup already had its Triage, so its new Sighting is no Near Miss of Screening.
 const waitingForDecision = and(
+  eq(sightings.source, "SHAB"),
   eq(sightings.screening, "discarded"),
   isNotNull(sightings.nearestLane),
   isNotNull(sightings.payload),
@@ -64,13 +67,13 @@ export function createNearMisses(db: Db, { now }: { now: () => Date }) {
         .limit(SHOWN);
       return rows.map(({ sighting: s }) => ({
         sightingId: s.id,
-        name: s.payload!.legalEntity.name,
+        name: shabPayload(s.payload).legalEntity.name,
         nearestLane: s.nearestLane!,
         closeness: s.closeness!,
         oneLiner: s.oneLiner ?? "",
         reason: s.screeningReason ?? "",
         publishedOn: s.publishedOn,
-        registration: registrationText(s.payload!),
+        registration: registrationText(shabPayload(s.payload)),
       }));
     },
 
@@ -98,7 +101,7 @@ export function createNearMisses(db: Db, { now }: { now: () => Date }) {
           // Claude's record on the Sighting stays; the decision says the Owner overruled it.
           await putOnRadar(tx, {
             sightingId,
-            sighting: payload!,
+            discovery: shabDiscovery(shabPayload(payload)),
             placement: { lane: nearestLane!, secondaryLane: null, oneLiner: oneLiner ?? "", priority: PULLED_IN_PRIORITY },
             at,
           });
@@ -114,7 +117,7 @@ export function createNearMisses(db: Db, { now }: { now: () => Date }) {
         .innerJoin(sightings, eq(sightings.id, nearMissDecisions.sightingId))
         .orderBy(desc(nearMissDecisions.decidedAt));
       return rows.map(({ near_miss_decisions: d, sightings: s }) => ({
-        name: s.payload!.legalEntity.name,
+        name: shabPayload(s.payload).legalEntity.name,
         decision: d.decision,
         decidedOn: dayOf(d.decidedAt),
         nearestLane: s.nearestLane!,

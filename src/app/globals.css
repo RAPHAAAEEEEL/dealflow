@@ -78,6 +78,10 @@ input[type="range"] { accent-color: var(--navy); width: 100%; }
 input[type="range"][data-unset="true"] { opacity: 0.5; }
 input[type="range"][data-unset="true"]::-webkit-slider-thumb { opacity: 0; }
 input[type="range"][data-unset="true"]::-moz-range-thumb { opacity: 0; }
+.field { display: block; margin: 10px 0; font-size: 13px; font-weight: 600; }
+.field input, .field select, .field textarea { display: block; width: 100%; font: inherit; font-size: 16px; font-weight: 400; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; background: var(--white); }
+.field textarea { min-height: 120px; }
+.note { background: var(--sky-soft); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
 .rationale { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin: 12px 0 8px; }
 .decide { display: flex; gap: 8px; }
 .decide .btn { flex: 1; }

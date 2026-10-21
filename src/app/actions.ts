@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { QuickAddError, type QuickAddDraft, type QuickAddInput } from "@/sources/quick-add";
 import { NEAR_MISS_DECISIONS, NearMissError } from "@/triage/near-misses";
 import { TriageError } from "@/triage/triage";
 import { CLAIMS, OWNER_FACTORS, type Claim, type OwnerFactor, type TriageInput } from "@/triage/types";
-import { getNearMisses, getTriage } from "./db";
+import { getNearMisses, getQuickAdd, getTriage } from "./db";
 import { isOwner } from "./owner";
 
 // What a form action reports back to its card: nothing when it worked, else a message to show.
@@ -61,4 +62,29 @@ export async function decideNearMiss(_: ActionState, form: FormData): Promise<Ac
   }
   revalidatePath("/", "layout");
   return {};
+}
+
+// Quick Add, step one: Claude's draft of the company the Owner shared.
+export async function previewQuickAdd(input: QuickAddInput): Promise<{ draft?: QuickAddDraft; error?: string }> {
+  if (!(await isOwner())) return { error: "Only the Owner can use Quick Add. Sign in again." };
+  return quickAddStep(async () => ({ draft: await (await getQuickAdd()).preview(input) }));
+}
+
+// Quick Add, step two: the draft as the Owner confirmed it goes on the radar.
+export async function addQuickAdd(draft: QuickAddDraft): Promise<{ known?: boolean; error?: string }> {
+  if (!(await isOwner())) return { error: "Only the Owner can use Quick Add. Sign in again." };
+  const result = await quickAddStep(async () => ({ known: (await (await getQuickAdd()).add(draft)).known }));
+  if (!("error" in result)) revalidatePath("/", "layout");
+  return result;
+}
+
+// A QuickAddError goes back to the page as is; anything else is logged, and the page offers a retry.
+async function quickAddStep<T extends object>(step: () => Promise<T>): Promise<T | { error: string }> {
+  try {
+    return await step();
+  } catch (error) {
+    if (error instanceof QuickAddError) return { error: error.message };
+    console.error("Quick Add failed", error);
+    return { error: "Something went wrong on the way. Try again in a moment." };
+  }
 }

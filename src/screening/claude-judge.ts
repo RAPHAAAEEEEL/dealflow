@@ -1,12 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import type { Sighting } from "@/sighting";
+import type { ShabSighting } from "@/sighting";
+import { HAIKU, haikuUsage } from "./claude-usage";
 import { JudgeError, LANES, type Criteria, type Judge } from "./types";
 
-export const SCREENING_MODEL = "claude-haiku-5-5";
-
-// USD per million tokens for prompts up to 100K tokens, from the Claude API reference (2026-10).
-const PRICE = { input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 };
 
 const laneOrNull = { anyOf: [{ type: "string", enum: LANES }, { type: "null" }] } as const;
 
@@ -44,7 +41,7 @@ Answer with:
 ${criteria.text}`;
 }
 
-function userMessage({ legalEntity, publishedOn }: Sighting) {
+function userMessage({ legalEntity, publishedOn }: ShabSighting) {
   const capital = legalEntity.capitalChf === null ? "unknown" : `CHF ${legalEntity.capitalChf}`;
   return `Name: ${legalEntity.name}
 Legal form: ${legalEntity.legalForm}
@@ -60,24 +57,14 @@ export function createClaudeJudge(client: Anthropic = new Anthropic()): Judge {
   return {
     async judge(sighting, criteria) {
       const response = await client.messages.parse({
-        model: SCREENING_MODEL,
+        model: HAIKU,
         max_tokens: 2048,
         output_config: { effort: "low", format: answerFormat },
         system: [{ type: "text", text: systemPrompt(criteria), cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: userMessage(sighting) }],
       });
 
-      const u = response.usage;
-      const cacheWrite = u.cache_creation_input_tokens ?? 0;
-      const cacheRead = u.cache_read_input_tokens ?? 0;
-      const usage = {
-        model: SCREENING_MODEL,
-        inputTokens: u.input_tokens + cacheWrite + cacheRead,
-        outputTokens: u.output_tokens,
-        costUsd:
-          (u.input_tokens * PRICE.input + cacheWrite * PRICE.cacheWrite + cacheRead * PRICE.cacheRead + u.output_tokens * PRICE.output) /
-          1_000_000,
-      };
+      const usage = haikuUsage(response.usage);
 
       if (response.stop_reason === "refusal") {
         const category = response.stop_details?.category ?? "no category";
