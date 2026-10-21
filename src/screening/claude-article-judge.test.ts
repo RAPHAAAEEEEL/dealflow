@@ -31,6 +31,7 @@ describe("Claude article judge", () => {
     const judge = createClaudeArticleJudge(fakeClaude({ stop_reason: "end_turn", parsed_output: { startups: [startup] }, usage }));
 
     expect(await judge.judgeArticle(article, criteria)).toEqual({
+      refused: false,
       mentions: [
         {
           name: "Beispiel Labor",

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { StartupStatus } from "@/radar/radar";
 import { QuickAddError, type QuickAddDraft, type QuickAddInput } from "@/sources/quick-add";
 import { NEAR_MISS_DECISIONS, NearMissError } from "@/triage/near-misses";
 import { TriageError } from "@/triage/triage";
@@ -64,10 +65,12 @@ export async function decideNearMiss(_: ActionState, form: FormData): Promise<Ac
   return {};
 }
 
-// Quick Add, step one: Claude's draft of the company the Owner shared.
-export async function previewQuickAdd(input: QuickAddInput): Promise<{ draft?: QuickAddDraft; error?: string }> {
+// Quick Add, step one: Claude's draft of the startup the Owner shared.
+export async function previewQuickAdd(
+  input: QuickAddInput,
+): Promise<{ draft?: QuickAddDraft; known?: { name: string; status: StartupStatus } | null; error?: string }> {
   if (!(await isOwner())) return { error: "Only the Owner can use Quick Add. Sign in again." };
-  return quickAddStep(async () => ({ draft: await (await getQuickAdd()).preview(input) }));
+  return quickAddStep(async () => (await getQuickAdd()).preview(input));
 }
 
 // Quick Add, step two: the draft as the Owner confirmed it goes on the radar.

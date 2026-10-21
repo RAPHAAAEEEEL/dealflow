@@ -63,7 +63,7 @@ export function fakeArticleJudge({ byTitle = {}, costUsd = 0.001 }: { byTitle?: 
   const judge: ArticleJudge = {
     async judgeArticle(article) {
       texts.push(article.text);
-      return { mentions: byTitle[article.title] ?? [], usage: usageCosting(costUsd) };
+      return { mentions: byTitle[article.title] ?? [], refused: false, usage: usageCosting(costUsd) };
     },
   };
   return { judge, texts };

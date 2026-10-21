@@ -1,10 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { websiteDomain } from "@/radar/identity";
-import { HAIKU, haikuUsage } from "./claude-usage";
-import { JudgeError, LANES, type ArticleJudge, type Criteria } from "./types";
-
-const laneOrNull = { anyOf: [{ type: "string", enum: LANES }, { type: "null" }] } as const;
+import { ownWebsite } from "@/radar/identity";
+import { HAIKU, haikuUsage, LANE_OR_NULL } from "./claude-usage";
+import { JudgeError, type ArticleJudge, type Criteria } from "./types";
 
 const answerFormat = jsonSchemaOutputFormat({
   type: "object",
@@ -19,8 +17,8 @@ const answerFormat = jsonSchemaOutputFormat({
           country: { type: "string" },
           city: { type: "string" },
           inScope: { type: "boolean" },
-          lane: laneOrNull,
-          secondaryLane: laneOrNull,
+          lane: LANE_OR_NULL,
+          secondaryLane: LANE_OR_NULL,
           oneLiner: { type: "string" },
           signal: { type: "string" },
           stage: { type: "string", enum: ["Pre-round", "Pre-seed", "Seed"] },
@@ -47,7 +45,7 @@ For each startup:
 - website: its own website if the article gives it, else null.
 - country: the ISO 3166 two-letter code of its headquarters, such as DE, AT or CH, or "" if unknown.
 - city: the city of its headquarters, or "" if unknown.
-- inScope: true only if it fits a Lane, could plausibly raise venture money, and passes the Stage Rule (founded at most 3 years ago, no announced round above about €3M, no Series A, headquarters or founding team in DACH).
+- inScope: true only if it fits a Lane, could plausibly raise venture money, and passes the Stage Rule (founded at most 3 years ago, no announced round above about €3M, no Series A, headquarters or founding team in DACH). What the article doesn't say is unknown, not a failure: rule a startup out for the Stage Rule only when the article shows it is past it.
 - lane: the Lane it fits; when out of scope, the nearest Lane, or null when it has nothing to do with any Lane.
 - secondaryLane: a second Lane it clearly also fits, else null. Always null when out of scope.
 - oneLiner: one plain English sentence on what it does, at most 15 words.
@@ -73,10 +71,11 @@ export function createClaudeArticleJudge(client: Anthropic = new Anthropic()): A
         messages: [{ role: "user", content: `Source: ${source}\nTitle: ${title}\nURL: ${url}\n\n${text}` }],
       });
       const usage = haikuUsage(response.usage);
-      if (response.stop_reason === "refusal") return { mentions: [], usage };
+      if (response.stop_reason === "refusal") return { mentions: [], refused: true, usage };
       const answer = response.parsed_output;
       if (!answer) throw new JudgeError(`No readable answer (stop reason: ${response.stop_reason})`, usage);
       return {
+        refused: false,
         mentions: answer.startups
           .filter((s) => s.name.trim())
           .map((s) => {
@@ -84,7 +83,7 @@ export function createClaudeArticleJudge(client: Anthropic = new Anthropic()): A
             const country = s.country.trim().toUpperCase();
             return {
               name: s.name.trim(),
-              website: s.website && websiteDomain(s.website) ? (/^https?:\/\//i.test(s.website) ? s.website : `https://${s.website}`) : null,
+              website: ownWebsite(s.website),
               country: /^[A-Z]{2}$/.test(country) ? country : "",
               city: s.city.trim(),
               inLane,

@@ -1,11 +1,16 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Usage } from "./types";
 
+import { LANES } from "./types";
+
 // Every unattended Claude call uses Haiku 5.5, under the hard monthly cap (docs/adr/0005).
 export const HAIKU = "claude-haiku-5-5";
 
 // USD per million tokens for prompts up to 100K tokens, from the Claude API reference (2026-10).
 const PRICE = { input: 0.1, cacheWrite: 0.125, cacheRead: 0.01, output: 0.5 };
+
+// A Lane, or null, in the answer schemas Claude fills in.
+export const LANE_OR_NULL = { anyOf: [{ type: "string", enum: LANES }, { type: "null" }] } as const;
 
 // What one Haiku call cost, cache reads and writes included.
 export function haikuUsage(u: Anthropic.Usage): Usage {

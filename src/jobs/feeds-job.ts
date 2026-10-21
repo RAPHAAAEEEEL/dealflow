@@ -82,7 +82,7 @@ async function readFeeds({ db, feeds }: FeedsJobDeps, feedIds: FeedId[], report:
     try {
       items = await feeds.fetchSightings(feed);
     } catch (error) {
-      report.unreadFeeds.push(`${FEEDS[feed].name}: ${messageOf(error)}`);
+      report.unreadFeeds.push(`${FEEDS[feed].label}: ${messageOf(error)}`);
       continue;
     }
     for (const item of items) {
@@ -114,13 +114,14 @@ async function screenArticles(deps: FeedsJobDeps, report: FeedsJobReport) {
     }
     let mentions: ArticleMention[];
     let model: string;
+    let refused: boolean;
     try {
       // The page text is only passed to Claude; it is never stored (docs/adr/0009).
       const text = FEEDS[article.feed].readArticle ? (await pages.fetchText(article.url)).slice(0, ARTICLE_CHARS) : article.teaser;
       const judged = await judge.judgeArticle({ source: article.source, title: article.title, text, url: article.url }, criteria);
       await budget.record("screening", judged.usage);
       report.spentUsd += judged.usage.costUsd;
-      mentions = judged.mentions;
+      ({ mentions, refused } = judged);
       model = judged.usage.model;
     } catch (error) {
       // A billed call without a usable answer still counts against the cap (docs/adr/0005).
@@ -159,16 +160,22 @@ async function screenArticles(deps: FeedsJobDeps, report: FeedsJobReport) {
           criteriaVersion: criteria.version,
           screenedBy: model,
           screening: mentions.some((m) => m.inLane && m.lane) ? "signal" : "discarded",
-          screeningReason: mentions.length ? mentions.map((m) => `${m.name}: ${m.reason}`).join(" · ") : "Names no startup.",
+          screeningReason: refused
+            ? "Claude declined to judge this article."
+            : mentions.length
+              ? mentions.map((m) => `${m.name}: ${m.reason}`).join(" · ")
+              : "Names no startup.",
           mentions: mentions.map(({ name, inLane, lane, closeness, reason }) => ({ name, inLane, lane, closeness, reason })),
+          // Publisher text can name founders, so once screened only the link and the facts remain (docs/adr/0003).
+          payload: { ...article, title: "", teaser: "" },
         })
         .where(eq(sightings.id, id));
     });
   }
 }
 
-// What an article tells the radar about one startup. The Swiss company number a feed gives belongs to
-// the article's company, so it is used only when the article names just one startup.
+// What an article tells the radar about one startup. The Swiss company number a feed gives is meant for
+// the article's company, so it only helps find a known startup, and only when the article names just one.
 function articleDiscovery(article: ArticleSighting, m: ArticleMention, startupsInArticle: number): Discovery {
   return {
     name: m.name,
@@ -177,8 +184,8 @@ function articleDiscovery(article: ArticleSighting, m: ArticleMention, startupsI
     stage: m.stage,
     website: m.website,
     firstSeen: article.publishedOn,
-    legalEntity:
-      article.uid && startupsInArticle === 1 ? { name: m.name, uid: article.uid, legalForm: "Other", seat: m.city, registeredOn: null } : null,
+    legalEntity: null,
+    matchUid: startupsInArticle === 1 ? article.uid : null,
     signal: { date: article.publishedOn, source: article.source, text: m.signal, url: article.url },
   };
 }

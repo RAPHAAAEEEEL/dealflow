@@ -266,6 +266,28 @@ vercel_env() {
   fi
 }
 
+# Asks for a Claude API key until Anthropic accepts it. Paste once: the hidden prompt shows nothing.
+CLAUDE_KEY_PATTERN='^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$'
+ask_claude_key() {
+  local var="$1"
+  ask_secret_until_or_clipboard "$var" "API key (hidden), or c for the clipboard:" "$CLAUDE_KEY_PATTERN" "That isn't one Claude API key: it starts with sk-ant- and is about 100 characters long."
+  until anthropic_key_works "${!var}"; do
+    warn "Anthropic rejects this key. Copy it again from the Console."
+    ask_secret_until_or_clipboard "$var" "API key (hidden), or c for the clipboard:" "$CLAUDE_KEY_PATTERN" "That isn't one Claude API key."
+  done
+  printf '  %s✓%s Anthropic accepts the key.\n' "$GREEN" "$RESET"
+}
+
+# Builds production again, so new Vercel variables apply.
+redeploy_production() {
+  if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
+    printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
+  else
+    warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy, and wait until it's ready."
+    pause "Press Enter once the redeploy is ready"
+  fi
+}
+
 stage_1() {
   stage "Preflight"
   say "Checking that everything this wizard relies on is in place."
@@ -309,12 +331,7 @@ stage_3() {
   note "If the page has moved, open the Claude Console and go to Settings → API keys."
   step "Create a key, name it 'dealflow', and copy it (it starts with sk-ant- and is about 100 characters long)."
   note "Paste it once: the hidden prompt shows nothing, and pasting twice makes the key unusable."
-  ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key: it starts with sk-ant- and is about 100 characters long."
-  until anthropic_key_works "$ANTHROPIC_API_KEY"; do
-    warn "Anthropic rejects this key. Copy it again from the Console."
-    ask_secret_until_or_clipboard ANTHROPIC_API_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
-  done
-  printf '  %s✓%s Anthropic accepts the key.\n' "$GREEN" "$RESET"
+  ask_claude_key ANTHROPIC_API_KEY
   write_env ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   set_secret ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
   step "Recommended: if the Console offers a monthly spend limit, set about \$10 as a second safety net."
@@ -448,14 +465,7 @@ stage_8() {
 stage_9() {
   stage "Redeploy and sign in"
   say "The new variables apply once production is built again."
-  if confirm "Redeploy production now?"; then
-    if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
-      printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
-    else
-      warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy, and wait until it's ready."
-      pause "Press Enter once the redeploy is ready"
-    fi
-  fi
+  if confirm "Redeploy production now?"; then redeploy_production; fi
   open_url "$DEALFLOW_APP_URL/feed"
   step "Sign in with GitHub and authorize Dealflow."
   step "You should see the Feed saying 'Nothing to triage'."
@@ -538,24 +548,14 @@ stage_13() {
     note "Using the Claude key from $ENV_FILE; it goes to Vercel through stdin, never shown."
   else
     warn "No working Claude key in $ENV_FILE. Paste it here (the same one as in stage 3)."
-    ask_secret_until_or_clipboard VERCEL_CLAUDE_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
-    until anthropic_key_works "$VERCEL_CLAUDE_KEY"; do
-      warn "Anthropic rejects this key. Copy it again from the Console."
-      ask_secret_until_or_clipboard VERCEL_CLAUDE_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
-    done
+    ask_claude_key VERCEL_CLAUDE_KEY
   fi
   vercel_env ANTHROPIC_API_KEY "$VERCEL_CLAUDE_KEY"
-  if confirm "Redeploy production now, so the key applies?"; then
-    if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
-      printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
-    else
-      warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy."
-    fi
-  fi
+  if confirm "Redeploy production now, so the key applies?"; then redeploy_production; fi
   say ""
   say "Now on the iPhone:"
   step "In Safari, open $DEALFLOW_APP_URL/add and sign in with GitHub once."
-  step "Open 'Set up sharing from the iPhone' on that page and build the shortcut as it says (5 steps)."
+  step "Open 'Set up sharing from the iPhone' on that page and build the shortcut as it says (6 steps)."
   step "Try it: in LinkedIn, open a startup's company page, tap Share, choose Dealflow, then 'Read it'."
   pause "Press Enter once a Quick Add worked, or to finish later"
 }

@@ -1,6 +1,6 @@
 import { connect, type Db } from "@/db";
 import { loadCriteria } from "@/screening/criteria";
-import { createClaudeCompanyReader } from "@/sources/claude-company-reader";
+import { createClaudeStartupReader } from "@/sources/claude-startup-reader";
 import { createPageFetcher } from "@/sources/page-fetcher";
 import { createQuickAdd } from "@/sources/quick-add";
 import { createNearMisses } from "@/triage/near-misses";
@@ -32,7 +32,7 @@ export async function getNearMisses() {
 // Quick Add with Claude Haiku and the open web, under the same monthly cap as the jobs (docs/adr/0005).
 export async function getQuickAdd() {
   return createQuickAdd(await getDb(), {
-    reader: createClaudeCompanyReader(),
+    reader: createClaudeStartupReader(),
     pages: createPageFetcher(),
     criteria: await loadCriteria(),
     monthlyCapUsd: Number(process.env.DEALFLOW_MONTHLY_CAP_USD ?? 10),

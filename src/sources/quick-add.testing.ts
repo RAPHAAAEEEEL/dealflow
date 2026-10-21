@@ -1,9 +1,9 @@
 import { usageCosting } from "@/screening/judge.testing";
-import type { CompanyReader, CompanyReading, PageFetcher } from "./quick-add";
+import type { StartupReader, StartupReading, PageFetcher } from "./quick-add";
 
-// Test doubles for Quick Add's two boundaries: Claude reading a company, and fetching a web page.
+// Test doubles for Quick Add's two boundaries: Claude reading which startup it is, and fetching a web page.
 
-type Answer = Omit<Extract<CompanyReading, { found: true }>, "usage" | "found">;
+type Answer = Omit<Extract<StartupReading, { found: true }>, "usage" | "found">;
 
 export const voltMover: Answer = {
   name: "Volt Mover",
@@ -19,9 +19,9 @@ export const voltMover: Answer = {
 };
 
 // Answers in turn, the last one again for any further call, and remembers what it was given.
-export function fakeCompanyReader(answers: (Partial<Answer> | { found: false; reason: string })[], costUsd = 0.001) {
-  const calls: Parameters<CompanyReader["read"]>[0][] = [];
-  const reader: CompanyReader = {
+export function fakeStartupReader(answers: (Partial<Answer> | { found: false; reason: string })[], costUsd = 0.001) {
+  const calls: Parameters<StartupReader["read"]>[0][] = [];
+  const reader: StartupReader = {
     async read(input) {
       calls.push(input);
       const answer = answers[Math.min(calls.length - 1, answers.length - 1)];

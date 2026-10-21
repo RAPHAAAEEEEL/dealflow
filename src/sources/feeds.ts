@@ -3,15 +3,35 @@ import { dayOf } from "@/dates";
 import type { ArticleSighting } from "@/sighting";
 import { htmlToText } from "./page-fetcher";
 
-// The startup news feeds the radar reads (docs/adr/0009). Each item is stored with its title, link and
-// the feed's own teaser; the full text is never kept. `readArticle` marks feeds whose teaser only names
+// The startup news feeds the radar reads (docs/adr/0009). Each item is stored with its link, and its title
+// and the feed's own teaser only until it is screened; the full text is never kept. `readArticle` marks feeds whose teaser only names
 // the startups, so Screening reads the article page once to judge them.
 export const FEEDS = {
-  "deutsche-startups": { name: "deutsche-startups.de", url: "https://www.deutsche-startups.de/tag/brandneu/feed/", readArticle: true },
-  startupticker: { name: "startupticker.ch", url: "https://www.startupticker.ch/en/rss/news", readArticle: false },
-  "eu-startups-de": { name: "EU-Startups", url: "https://www.eu-startups.com/category/germany-startups/feed/", readArticle: false },
-  "eu-startups-at": { name: "EU-Startups", url: "https://www.eu-startups.com/category/austria-startups/feed/", readArticle: false },
-  "eu-startups-ch": { name: "EU-Startups", url: "https://www.eu-startups.com/category/switzerland-startups/feed/", readArticle: false },
+  "deutsche-startups": {
+    name: "deutsche-startups.de",
+    label: "deutsche-startups.de #Brandneu",
+    url: "https://www.deutsche-startups.de/tag/brandneu/feed/",
+    readArticle: true,
+  },
+  startupticker: { name: "startupticker.ch", label: "startupticker.ch", url: "https://www.startupticker.ch/en/rss/news", readArticle: false },
+  "eu-startups-de": {
+    name: "EU-Startups",
+    label: "EU-Startups Germany",
+    url: "https://www.eu-startups.com/category/germany-startups/feed/",
+    readArticle: false,
+  },
+  "eu-startups-at": {
+    name: "EU-Startups",
+    label: "EU-Startups Austria",
+    url: "https://www.eu-startups.com/category/austria-startups/feed/",
+    readArticle: false,
+  },
+  "eu-startups-ch": {
+    name: "EU-Startups",
+    label: "EU-Startups Switzerland",
+    url: "https://www.eu-startups.com/category/switzerland-startups/feed/",
+    readArticle: false,
+  },
 } as const;
 export type FeedId = keyof typeof FEEDS;
 export const FEED_IDS = Object.keys(FEEDS) as FeedId[];

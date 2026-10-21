@@ -71,5 +71,8 @@ export type ArticleMention = {
 
 // The boundary to Claude for news articles. Tests replace it with a fake; production uses Claude Haiku.
 export type ArticleJudge = {
-  judgeArticle(article: { source: string; title: string; text: string; url: string }, criteria: Criteria): Promise<{ mentions: ArticleMention[]; usage: Usage }>;
+  judgeArticle(
+    article: { source: string; title: string; text: string; url: string },
+    criteria: Criteria,
+  ): Promise<{ mentions: ArticleMention[]; refused: boolean; usage: Usage }>;
 };

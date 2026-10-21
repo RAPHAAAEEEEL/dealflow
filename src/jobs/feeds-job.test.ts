@@ -89,6 +89,29 @@ describe("Feeds job", () => {
     ]);
   });
 
+  test("takes startups from Austria and Germany alike", async () => {
+    const at: RssItem = { ...brandneu(7, ""), title: "Beispiel Werk raises €1M", link: "https://eu.example/beispiel-werk/", guid: "https://eu.example/?p=7" };
+    const { judge } = fakeArticleJudge({
+      byTitle: { "Beispiel Werk raises €1M": [mention("Beispiel Werk", "manufacturing", { country: "AT", city: "Linz" })] },
+    });
+
+    await run({ "eu-startups-at": rssFeed([at]) }, { judge });
+
+    expect((await createRadar(db).list()).map((r) => [r.name, r.country, r.hq, r.latestSignal?.source])).toEqual([
+      ["Beispiel Werk", "AT", "Linz", "EU-Startups"],
+    ]);
+  });
+
+  test("keeps an article's title and teaser only until it is screened", async () => {
+    const feeds = { startupticker: atomFeed([tickerEntry("Beispiel Labor launches")]) };
+    const { judge } = fakeArticleJudge({ byTitle: { "Beispiel Labor launches": [mention("Beispiel Labor", "manufacturing")] } });
+
+    await run(feeds, { judge });
+
+    const [sighting] = await db.query.sightings.findMany();
+    expect(sighting.payload).toMatchObject({ title: "", teaser: "", url: expect.stringContaining("Beispiel%20Labor") });
+  });
+
   test("reads the article page when the feed only names the startups, and the teaser otherwise", async () => {
     const { judge, texts } = fakeArticleJudge();
     const { fetcher, fetched } = fakePages({ "https://news.example/2026/10/brandneu-1/": "Beispiel Kran aus Berlin baut Kranroboter." });
@@ -216,7 +239,7 @@ describe("Feeds job", () => {
       {
         job: "feeds",
         publicationDate: "2026-10-21",
-        report: { fetched: 1, new: 1, failed: 0, unreadFeeds: [`EU-Startups: fetch failed for ${FEEDS["eu-startups-de"].url}`] },
+        report: { fetched: 1, new: 1, failed: 0, unreadFeeds: [`EU-Startups Germany: fetch failed for ${FEEDS["eu-startups-de"].url}`] },
       },
     ]);
   });

@@ -34,7 +34,7 @@ _Avoid_: Phase filter
 
 **Source**:
 A public, permitted origin of Sightings: the Swiss commercial register gazette (SHAB), startup news feeds such as deutsche-startups.de #Brandneu, a newsletter inbox, or Quick Add.
-_Avoid_: Provider, scraper, feed (the Feed is a view, not a Source)
+_Avoid_: Provider, scraper, "feed" on its own (the Feed is a view; a Source is a news feed)
 
 **Quick Add**:
 A Source the Owner feeds by hand. The Owner shares a link or text, for example from LinkedIn, Claude drafts which company it is about, and the Owner confirms the draft. What the Owner adds skips Screening and goes first into Triage.

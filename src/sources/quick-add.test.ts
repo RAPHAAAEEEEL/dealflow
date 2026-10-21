@@ -5,7 +5,7 @@ import { createRadar } from "@/radar/radar";
 import { fakeJudge, inLane } from "@/screening/judge.testing";
 import { createTriage } from "@/triage/triage";
 import { createQuickAdd, QuickAddError, type QuickAddDraft } from "./quick-add";
-import { fakeCompanyReader, fakePages } from "./quick-add.testing";
+import { fakeStartupReader, fakePages } from "./quick-add.testing";
 
 let db: Db;
 beforeEach(async () => {
@@ -14,7 +14,7 @@ beforeEach(async () => {
 
 const NOW = "2026-10-21T09:00:00Z";
 
-function quickAdd({ reader = fakeCompanyReader([{}]).reader, pages = fakePages().fetcher, monthlyCapUsd = 10 } = {}) {
+function quickAdd({ reader = fakeStartupReader([{}]).reader, pages = fakePages().fetcher, monthlyCapUsd = 10 } = {}) {
   return createQuickAdd(db, {
     reader,
     pages,
@@ -39,10 +39,10 @@ const draft = (overrides: Partial<QuickAddDraft> = {}): QuickAddDraft => ({
 });
 
 describe("Quick Add preview", () => {
-  test("drafts the company Claude reads from what the Owner shared", async () => {
-    const { reader, calls } = fakeCompanyReader([{}]);
+  test("drafts the startup Claude reads from what the Owner shared", async () => {
+    const { reader, calls } = fakeStartupReader([{}]);
 
-    const preview = await quickAdd({ reader }).preview({ text: "Volt Mover just launched its yard robot.", url: "" });
+    const { draft: preview } = await quickAdd({ reader }).preview({ text: "Volt Mover just launched its yard robot.", url: "" });
 
     expect({ preview, toClaude: calls[0].text }).toEqual({
       preview: {
@@ -61,11 +61,11 @@ describe("Quick Add preview", () => {
     });
   });
 
-  test("reads the company's website once Claude names it, and drafts from both", async () => {
-    const { reader, calls } = fakeCompanyReader([{ website: "https://volt-mover.de" }, { website: "https://volt-mover.de", city: "Hamburg" }]);
+  test("reads the startup's website once Claude names it, and drafts from both", async () => {
+    const { reader, calls } = fakeStartupReader([{ website: "https://volt-mover.de" }, { website: "https://volt-mover.de", city: "Hamburg" }]);
     const { fetcher, fetched } = fakePages({ "https://volt-mover.de": "Volt Mover builds yard tugs. Based in Hamburg." });
 
-    const preview = await quickAdd({ reader, pages: fetcher }).preview({ text: "Volt Mover is hiring.", url: "" });
+    const { draft: preview } = await quickAdd({ reader, pages: fetcher }).preview({ text: "Volt Mover is hiring.", url: "" });
 
     expect({ fetched, pagesGivenToClaude: calls.map((c) => c.pages.map((p) => p.url)), hq: preview.hq }).toEqual({
       fetched: ["https://volt-mover.de"],
@@ -75,10 +75,10 @@ describe("Quick Add preview", () => {
   });
 
   test("opens a shared link that isn't LinkedIn, such as an article", async () => {
-    const { reader, calls } = fakeCompanyReader([{}]);
+    const { reader, calls } = fakeStartupReader([{}]);
     const { fetcher } = fakePages({ "https://news.example/volt-mover": "Volt Mover raises a pre-seed round." });
 
-    const preview = await quickAdd({ reader, pages: fetcher }).preview({ text: "", url: "https://news.example/volt-mover" });
+    const { draft: preview } = await quickAdd({ reader, pages: fetcher }).preview({ text: "", url: "https://news.example/volt-mover" });
 
     expect({ pages: calls[0].pages, link: preview.link }).toEqual({
       pages: [{ url: "https://news.example/volt-mover", text: "Volt Mover raises a pre-seed round." }],
@@ -91,27 +91,35 @@ describe("Quick Add preview", () => {
     ["https://www.linkedin.com/in/max-muster-123/", null, null],
     ["https://www.linkedin.com/posts/max-muster_yard-robots-activity-7300000000000000000-abcd", null, null],
   ])("never opens LinkedIn, and keeps only company pages as the link (%s)", async (url, companyHint, link) => {
-    const { reader, calls } = fakeCompanyReader([{}]);
+    const { reader, calls } = fakeStartupReader([{}]);
     const { fetcher, fetched } = fakePages();
 
-    const preview = await quickAdd({ reader, pages: fetcher }).preview({ text: "Volt Mover is building yard robots.", url });
+    const { draft: preview } = await quickAdd({ reader, pages: fetcher }).preview({ text: "Volt Mover is building yard robots.", url });
 
     expect({ fetched, hint: calls[0].linkedinCompany, link: preview.link }).toEqual({ fetched: [], hint: companyHint, link });
   });
 
-  test("passes on Claude's caveat when the company looks past the Stage Rule", async () => {
-    const { reader } = fakeCompanyReader([{ pastStageRule: true, reason: "Raised a €12M Series A in 2025." }]);
+  test("tells the Owner when the radar already knows the startup, before anything is added", async () => {
+    await runShabDay(db, "2026-10-16", { entries: [entryNamed("Volt Mover AG")], judge: fakeJudge({ otherwise: inLane("robotics", 70, "Yard robots.") }) });
 
-    expect((await quickAdd({ reader }).preview({ text: "Volt Mover closes Series A.", url: "" })).note).toBe(
+    const { known } = await quickAdd().preview({ text: "Volt Mover builds yard robots.", url: "" });
+
+    expect(known).toEqual({ name: "Volt Mover AG", status: "Candidate" });
+  });
+
+  test("passes on Claude's caveat when the startup looks past the Stage Rule", async () => {
+    const { reader } = fakeStartupReader([{ pastStageRule: true, reason: "Raised a €12M Series A in 2025." }]);
+
+    expect((await quickAdd({ reader }).preview({ text: "Volt Mover closes Series A.", url: "" })).draft.note).toBe(
       "Probably past the Stage Rule: Raised a €12M Series A in 2025.",
     );
   });
 
-  test("says what's missing when Claude can't tell which company it is", async () => {
-    const { reader } = fakeCompanyReader([{ found: false, reason: "The post names no company." }]);
+  test("says what's missing when Claude can't tell which startup it is", async () => {
+    const { reader } = fakeStartupReader([{ found: false, reason: "The post names no company." }]);
 
     await expect(quickAdd({ reader }).preview({ text: "Great week at the conference!", url: "" })).rejects.toThrow(
-      new QuickAddError("Claude couldn't tell which company this is: The post names no company. Add its name or website and try again."),
+      new QuickAddError("Claude couldn't tell which startup this is: The post names no company. Add its name or website and try again."),
     );
   });
 
@@ -120,7 +128,7 @@ describe("Quick Add preview", () => {
   });
 
   test("stops before the month's Claude budget is spent", async () => {
-    const { reader } = fakeCompanyReader([{}], 0.001);
+    const { reader } = fakeStartupReader([{}], 0.001);
     const add = quickAdd({ reader, monthlyCapUsd: 0.0015 });
     await add.preview({ text: "Volt Mover", url: "" });
 
@@ -129,7 +137,7 @@ describe("Quick Add preview", () => {
 });
 
 describe("Quick Add", () => {
-  test("puts the confirmed company on the radar as a Candidate at the front of the queue", async () => {
+  test("puts the confirmed startup on the radar as a Candidate at the front of the queue", async () => {
     await runShabDay(db, "2026-10-16", { entries: [entryNamed("Beispiel Kran AG")], judge: fakeJudge({ otherwise: inLane("robotics", 90, "Cranes.") }) });
 
     await quickAdd().add(draft());
@@ -176,10 +184,11 @@ describe("Quick Add", () => {
   });
 
   test.each([
-    [{ name: " " }, "A Quick Add needs the company's name."],
+    [{ name: " " }, "A Quick Add needs the startup's name."],
     [{ lane: null }, "Choose the Lane it is closest to."],
     [{ country: "" }, "Choose the country of its headquarters."],
     [{ oneLiner: "" }, "Add a one-line description."],
+    [{ stage: "Series A" as never }, "Choose its stage."],
   ] as const)("refuses an incomplete draft (%o)", async (overrides, message) => {
     await expect(quickAdd().add(draft(overrides))).rejects.toThrow(new QuickAddError(message));
   });

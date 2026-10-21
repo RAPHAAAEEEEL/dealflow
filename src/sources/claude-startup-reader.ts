@@ -1,13 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
-import { websiteDomain } from "@/radar/identity";
-import { HAIKU, haikuUsage } from "@/screening/claude-usage";
-import { LANES, type Criteria } from "@/screening/types";
-import type { CompanyReader } from "./quick-add";
+import { ownWebsite } from "@/radar/identity";
+import { HAIKU, haikuUsage, LANE_OR_NULL } from "@/screening/claude-usage";
+import type { Criteria } from "@/screening/types";
+import type { StartupReader } from "./quick-add";
 
 const PAGE_CHARS = 6000; // per page, enough for a homepage or an article's start
-
-const laneOrNull = { anyOf: [{ type: "string", enum: LANES }, { type: "null" }] } as const;
 
 const answerFormat = jsonSchemaOutputFormat({
   type: "object",
@@ -17,8 +15,8 @@ const answerFormat = jsonSchemaOutputFormat({
     website: { anyOf: [{ type: "string" }, { type: "null" }] },
     country: { type: "string" },
     city: { type: "string" },
-    lane: laneOrNull,
-    secondaryLane: laneOrNull,
+    lane: LANE_OR_NULL,
+    secondaryLane: LANE_OR_NULL,
     oneLiner: { type: "string" },
     stage: { type: "string", enum: ["Pre-round", "Pre-seed", "Seed"] },
     pastStageRule: { type: "boolean" },
@@ -49,7 +47,7 @@ Answer with:
 ${criteria.text}`;
 }
 
-function userMessage({ text, pages, linkedinCompany }: Parameters<CompanyReader["read"]>[0]) {
+function userMessage({ text, pages, linkedinCompany }: Parameters<StartupReader["read"]>[0]) {
   return [
     text ? `Shared text:\n${text}` : "Shared text: (none)",
     linkedinCompany ? `Shared LinkedIn company page: linkedin.com/company/${linkedinCompany}` : "",
@@ -60,7 +58,7 @@ function userMessage({ text, pages, linkedinCompany }: Parameters<CompanyReader[
 }
 
 // Claude Haiku reads which company the Owner shared. Its answer is a draft the Owner confirms.
-export function createClaudeCompanyReader(client: Anthropic = new Anthropic()): CompanyReader {
+export function createClaudeStartupReader(client: Anthropic = new Anthropic()): StartupReader {
   return {
     async read(input, criteria) {
       const response = await client.messages.parse({
@@ -76,7 +74,7 @@ export function createClaudeCompanyReader(client: Anthropic = new Anthropic()): 
         return { found: false, reason: "Claude gave no usable answer.", usage };
       }
       if (!answer.found || !answer.name.trim()) return { found: false, reason: answer.reason, usage };
-      const website = answer.website && websiteDomain(answer.website) ? withScheme(answer.website) : null;
+      const website = ownWebsite(answer.website);
       const country = answer.country.trim().toUpperCase();
       return {
         found: true,
@@ -95,5 +93,3 @@ export function createClaudeCompanyReader(client: Anthropic = new Anthropic()): 
     },
   };
 }
-
-const withScheme = (website: string) => (/^https?:\/\//i.test(website) ? website : `https://${website}`);

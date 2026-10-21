@@ -1,4 +1,4 @@
-import type { FEEDS, FeedId } from "@/sources/feeds";
+import { ARTICLE_SOURCES, type FEEDS, type FeedId } from "@/sources/feeds";
 import type { QuickAddDraft } from "@/sources/quick-add";
 
 // A Sighting is one raw publication from a Source, before Screening has judged it (CONTEXT.md).
@@ -21,18 +21,18 @@ export type ShabSighting = {
   };
 };
 
-// What Quick Add keeps of what the Owner shared: the company's facts as the Owner confirmed them,
+// What Quick Add keeps of what the Owner shared: the startup's facts as the Owner confirmed them,
 // never the shared text, which may name people (docs/adr/0003).
 export type QuickAddSighting = {
   source: "Quick Add";
   externalId: string;
   publishedOn: string;
   url: string | null;
-  company: QuickAddDraft;
+  startup: QuickAddDraft;
 };
 
-// An item from a startup news feed: its title, link and the feed's own teaser, never the full text
-// (docs/adr/0009). `uid` is the Swiss company number when the feed gives one.
+// An item from a startup news feed: its link, and its title and the feed's own teaser until it is
+// screened, never the full text (docs/adr/0009). `uid` is the Swiss company number when the feed gives one.
 export type ArticleSighting = {
   source: (typeof FEEDS)[FeedId]["name"];
   feed: FeedId;
@@ -47,8 +47,8 @@ export type ArticleSighting = {
 export type Sighting = ShabSighting | QuickAddSighting | ArticleSighting;
 
 export function articlePayload(payload: Sighting | null): ArticleSighting {
-  if (!payload || !("feed" in payload)) throw new Error(`Expected an article Sighting, got ${payload?.source ?? "none"}`);
-  return payload;
+  if (!payload || !ARTICLE_SOURCES.includes(payload.source as ArticleSighting["source"])) throw new Error(`Expected an article Sighting, got ${payload?.source ?? "none"}`);
+  return payload as ArticleSighting;
 }
 
 // A stored payload that SHAB-only code reads, such as Screening and Near Misses.

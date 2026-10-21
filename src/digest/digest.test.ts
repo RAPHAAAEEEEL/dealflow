@@ -88,7 +88,7 @@ Discarded, but close to a Lane. In the Feed, pull one into Triage or confirm it 
 
 STATUS CHECK
 ✓ SHAB: every register day screened, Mon 12 Oct to Fri 16 Oct
-✓ Feeds: read on Sun 18 Oct
+✓ News feeds: read on Sun 18 Oct
 ✓ Nothing waiting for screening
 ✓ Claude spend in October: $0.03 of $10.00
 ✓ SHAB terms accepted on 2026-10-17, run out on 2027-01-15 (in 89 days)
@@ -198,14 +198,14 @@ describe("Feeds in the Status Check", () => {
   });
 
   test("warns before the feeds have ever run", async () => {
-    expect((await digest()).text).toContain("⚠ Feeds: no run yet. Check Actions → Feeds job.\n");
+    expect((await digest()).text).toContain("⚠ News feeds: no run yet. Check Actions → Feeds job.\n");
   });
 
   test("warns when the feeds haven't run for two days", async () => {
     await feedsRun("2026-10-15T06:00:00Z");
 
     expect((await digest()).text).toContain(
-      "⚠ Feeds: no run since Thu 15 Oct. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.\n",
+      "⚠ News feeds: no run since Thu 15 Oct. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.\n",
     );
   });
 
@@ -216,7 +216,7 @@ describe("Feeds in the Status Check", () => {
 
     expect({ warnings, text }).toMatchObject({
       warnings: 1,
-      text: expect.stringContaining(`⚠ Feeds: couldn't read EU-Startups: fetch failed for ${FEEDS["eu-startups-de"].url}\n`),
+      text: expect.stringContaining(`⚠ News feeds: couldn't read EU-Startups Germany: fetch failed for ${FEEDS["eu-startups-de"].url}\n`),
     });
   });
 });

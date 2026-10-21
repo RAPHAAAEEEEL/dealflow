@@ -1,18 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { jsonSchemaOutputFormat } from "@anthropic-ai/sdk/helpers/json-schema";
 import type { ShabSighting } from "@/sighting";
-import { HAIKU, haikuUsage } from "./claude-usage";
-import { JudgeError, LANES, type Criteria, type Judge } from "./types";
+import { HAIKU, haikuUsage, LANE_OR_NULL } from "./claude-usage";
+import { JudgeError, type Criteria, type Judge } from "./types";
 
-
-const laneOrNull = { anyOf: [{ type: "string", enum: LANES }, { type: "null" }] } as const;
 
 const answerFormat = jsonSchemaOutputFormat({
   type: "object",
   properties: {
     inScope: { type: "boolean" },
-    lane: laneOrNull,
-    secondaryLane: laneOrNull,
+    lane: LANE_OR_NULL,
+    secondaryLane: LANE_OR_NULL,
     oneLiner: { type: "string" },
     priority: { type: "integer" },
     closeness: { type: "integer" },

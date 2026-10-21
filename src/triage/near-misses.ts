@@ -1,10 +1,10 @@
-import { and, desc, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
 import { dayOf, daysBefore } from "@/dates";
 import type { Db } from "@/db";
-import { legalEntities, nearMissDecisions, sightings } from "@/db/schema";
-import { putOnRadar } from "@/radar/radar";
+import { nearMissDecisions, sightings } from "@/db/schema";
+import { knownStartups, putOnRadar } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
-import { shabPayload } from "@/sighting";
+import { shabPayload, type Sighting } from "@/sighting";
 import { registrationText, shabDiscovery } from "@/sources/shab";
 
 // The Owner's two answers to a Near Miss: Screening should have kept it, or was right to discard it.
@@ -40,18 +40,27 @@ const WINDOW_DAYS = 7;
 const MIN_CLOSENESS = 20; // below this a discard is noise, never a Near Miss
 const PULLED_IN_PRIORITY = 100; // the Owner asked for it, so it comes first in the Triage queue
 
-// Discarded by Claude with a nearest Lane, not decided yet, and of a Legal Entity the radar doesn't
-// know: a known startup already had its Triage, so its new Sighting is no Near Miss of Screening.
+// Discarded by Claude with a nearest Lane, and not decided yet.
 const waitingForDecision = and(
   eq(sightings.source, "SHAB"),
   eq(sightings.screening, "discarded"),
   isNotNull(sightings.nearestLane),
   isNotNull(sightings.payload),
   isNull(nearMissDecisions.id),
-  isNull(legalEntities.id),
 );
 
-const knownLegalEntity = eq(legalEntities.uid, sql`${sightings.payload}->'legalEntity'->>'uid'`);
+// A startup the radar already knows had its Triage, so its new Sighting is no Near Miss of Screening.
+async function unknownToRadar<T extends { payload: Sighting | null }>(db: Db, rows: T[]) {
+  const known = await knownStartups(db);
+  return rows.filter(({ payload }) => !known.match(identityOf(shabDiscovery(shabPayload(payload)))));
+}
+
+const identityOf = ({ name, website, legalEntity }: ReturnType<typeof shabDiscovery>) => ({
+  name,
+  website,
+  uid: legalEntity?.uid ?? null,
+  legalName: legalEntity?.name ?? null,
+});
 
 export function createNearMisses(db: Db, { now }: { now: () => Date }) {
   return {
@@ -61,11 +70,10 @@ export function createNearMisses(db: Db, { now }: { now: () => Date }) {
         .select({ sighting: sightings })
         .from(sightings)
         .leftJoin(nearMissDecisions, eq(nearMissDecisions.sightingId, sightings.id))
-        .leftJoin(legalEntities, knownLegalEntity)
         .where(and(waitingForDecision, gte(sightings.closeness, MIN_CLOSENESS), gte(sightings.screenedAt, daysBefore(now(), WINDOW_DAYS))))
-        .orderBy(desc(sightings.closeness), desc(sightings.publishedOn))
-        .limit(SHOWN);
-      return rows.map(({ sighting: s }) => ({
+        .orderBy(desc(sightings.closeness), desc(sightings.publishedOn));
+      const unknown = await unknownToRadar(db, rows.map((r) => r.sighting));
+      return unknown.slice(0, SHOWN).map((s) => ({
         sightingId: s.id,
         name: shabPayload(s.payload).legalEntity.name,
         nearestLane: s.nearestLane!,
@@ -81,14 +89,14 @@ export function createNearMisses(db: Db, { now }: { now: () => Date }) {
     async decide(sightingId: string, decision: NearMissDecision) {
       const at = now();
       await db.transaction(async (tx) => {
-        const [nearMiss] = await tx
+        const found = await tx
           .select({ sighting: sightings })
           .from(sightings)
           .leftJoin(nearMissDecisions, eq(nearMissDecisions.sightingId, sightings.id))
-          .leftJoin(legalEntities, knownLegalEntity)
           .where(and(eq(sightings.id, sightingId), waitingForDecision));
+        const [nearMiss] = await unknownToRadar(tx, found.map((r) => r.sighting));
         if (!nearMiss) throw new NearMissError("This entry is no longer a Near Miss waiting for a decision.");
-        const { payload, nearestLane, oneLiner } = nearMiss.sighting;
+        const { payload, nearestLane, oneLiner } = nearMiss;
 
         const inserted = await tx
           .insert(nearMissDecisions)

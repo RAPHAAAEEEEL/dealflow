@@ -130,20 +130,20 @@ async function feedsCheck(db: Db, now: () => Date): Promise<Check[]> {
     .where(eq(jobRuns.job, "feeds"))
     .orderBy(desc(jobRuns.startedAt))
     .limit(1);
-  if (!latest) return [{ ok: false, text: "Feeds: no run yet. Check Actions → Feeds job." }];
+  if (!latest) return [{ ok: false, text: "News feeds: no run yet. Check Actions → Feeds job." }];
   const day = dayLabel(dayOf(latest.startedAt));
   if (now().getTime() - latest.startedAt.getTime() > FEEDS_STALE_DAYS * DAY_MS) {
     return [
       {
         ok: false,
-        text: `Feeds: no run since ${day}. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.`,
+        text: `News feeds: no run since ${day}. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.`,
       },
     ];
   }
-  if (latest.report.error) return [{ ok: false, text: `Feeds: the last run broke off (${shorten(latest.report.error)}).` }];
+  if (latest.report.error) return [{ ok: false, text: `News feeds: the last run broke off (${shorten(latest.report.error)}).` }];
   const unread = "unreadFeeds" in latest.report ? (latest.report.unreadFeeds ?? []) : [];
-  if (unread.length) return unread.map((u) => ({ ok: false, text: `Feeds: couldn't read ${shorten(u)}` }));
-  return [{ ok: true, text: `Feeds: read on ${day}` }];
+  if (unread.length) return unread.map((u) => ({ ok: false, text: `News feeds: couldn't read ${shorten(u)}` }));
+  return [{ ok: true, text: `News feeds: read on ${day}` }];
 }
 
 // Sightings that still wait for Claude, per job: the month's budget ran out, or Claude or an article

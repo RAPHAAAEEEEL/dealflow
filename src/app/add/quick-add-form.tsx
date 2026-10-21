@@ -3,40 +3,51 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import type { Stage } from "@/radar/radar";
+import { STAGES, type Stage } from "@/radar/radar";
 import { LANE_NAMES, LANES, type Lane } from "@/screening/types";
 import type { QuickAddDraft } from "@/sources/quick-add";
 import { addQuickAdd, previewQuickAdd } from "../actions";
 
 const COUNTRIES = ["DE", "AT", "CH", "LI", "NL", "FR", "IT", "GB", "US"];
-const STAGES: Stage[] = ["Pre-round", "Pre-seed", "Seed"];
+
 
 // Two steps: what the Owner shared, then Claude's draft, which the Owner corrects and confirms.
 // A share from the iPhone arrives in the address's #fragment, which never reaches the server or its logs.
 export function QuickAddForm() {
   const [shared, setShared] = useState({ text: "", url: "" });
   const [draft, setDraft] = useState<QuickAddDraft | null>(null);
+  const [known, setKnown] = useState<{ name: string; status: string } | null>(null);
   const [added, setAdded] = useState<{ name: string; known: boolean } | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    if (params.has("url") || params.has("text")) {
-      setShared({ url: params.get("url") ?? "", text: params.get("text") ?? "" });
-      // Through the router, so a later refresh doesn't bring the share back.
-      router.replace(window.location.pathname, { scroll: false });
-    }
-  }, [router]);
-
-  const read = () =>
+  const read = (input = shared) =>
     startTransition(async () => {
       setError("");
-      const result = await previewQuickAdd(shared);
-      if (result.error) setError(result.error);
-      else setDraft(result.draft!);
+      const result = await previewQuickAdd(input);
+      if (result.error) return setError(result.error);
+      setDraft(result.draft!);
+      setKnown(result.known ?? null);
     });
+
+  // The iPhone shortcut sends what was shared as `share` (a link or text) and the clipboard as `text`.
+  // Arriving with something shared, the page asks Claude right away, so the Owner only checks and adds.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    if (!params.has("share") && !params.has("url") && !params.has("text")) return;
+    const share = (params.get("share") ?? "").trim();
+    const isLink = /^https?:\/\/\S+$/.test(share);
+    const input = {
+      url: params.get("url") ?? (isLink ? share : ""),
+      text: [isLink ? "" : share, params.get("text") ?? ""].filter((t) => t.trim()).join("\n"),
+    };
+    setShared(input);
+    // Through the router, so a later refresh doesn't bring the share back.
+    router.replace(window.location.pathname, { scroll: false });
+    if (input.url || input.text) read(input);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, for the share the page opened with
+  }, []);
 
   const add = () =>
     startTransition(async () => {
@@ -46,6 +57,7 @@ export function QuickAddForm() {
       if (result.error) return setError(result.error);
       setAdded({ name: draft.name, known: Boolean(result.known) });
       setDraft(null);
+      setKnown(null);
       setShared({ text: "", url: "" });
     });
 
@@ -83,6 +95,12 @@ export function QuickAddForm() {
     return (
       <div className="card candidate-card">
         <div className="card-kind">Claude&apos;s draft · check it, then add</div>
+        {known && (
+          <p className="note">
+            Already on the radar as <b>{known.name}</b> ({known.status}). Adding gives it a new Signal
+            {known.status === "Candidate" || known.status === "Expired" ? " and puts it first in Triage." : "; its Triage decision stays."}
+          </p>
+        )}
         {draft.note && <p className="note">{draft.note}</p>}
         <label className="field">
           Name
@@ -137,7 +155,7 @@ export function QuickAddForm() {
           <button type="button" className="btn sky" disabled={pending} onClick={add}>
             {pending ? "Adding…" : "Add to radar"}
           </button>
-          <button type="button" className="btn" disabled={pending} onClick={() => setDraft(null)}>
+          <button type="button" className="btn" disabled={pending} onClick={() => (setDraft(null), setKnown(null))}>
             Back
           </button>
         </div>
@@ -161,12 +179,12 @@ export function QuickAddForm() {
         Text
         <textarea
           value={shared.text}
-          placeholder="Paste a post, a description or just the company's name"
+          placeholder="Paste a post, a description or just the startup's name"
           onChange={(e) => setShared((s) => ({ ...s, text: e.target.value }))}
         />
       </label>
       <div className="decide">
-        <button type="button" className="btn sky" disabled={pending || (!shared.text.trim() && !shared.url.trim())} onClick={read}>
+        <button type="button" className="btn sky" disabled={pending || (!shared.text.trim() && !shared.url.trim())} onClick={() => read()}>
           {pending ? "Reading…" : "Read it"}
         </button>
         <button type="button" className="btn" disabled={pending} onClick={pasteClipboard}>
