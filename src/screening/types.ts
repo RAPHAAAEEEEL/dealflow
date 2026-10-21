@@ -1,3 +1,4 @@
+import type { Stage } from "@/radar/radar";
 import type { ShabSighting } from "@/sighting";
 
 export const LANES = ["robotics", "agents", "manufacturing"] as const;
@@ -49,3 +50,26 @@ export class JudgeError extends Error {
     super(message);
   }
 }
+
+// One startup an article presents or reports on, as Claude judged it against the Lanes and the Stage
+// Rule. Claude names no people in any field (docs/adr/0003).
+export type ArticleMention = {
+  name: string;
+  website: string | null;
+  country: string; // ISO 3166 code, or "" when unknown
+  city: string;
+  inLane: boolean;
+  lane: Lane | null; // the nearest Lane when out of scope
+  secondaryLane: Lane | null;
+  oneLiner: string;
+  signal: string; // what the article reports about it, in one sentence
+  stage: Stage;
+  priority: number; // 0–100, as for a Judgement
+  closeness: number; // 0–100, as for a discarded Judgement
+  reason: string;
+};
+
+// The boundary to Claude for news articles. Tests replace it with a fake; production uses Claude Haiku.
+export type ArticleJudge = {
+  judgeArticle(article: { source: string; title: string; text: string; url: string }, criteria: Criteria): Promise<{ mentions: ArticleMention[]; usage: Usage }>;
+};

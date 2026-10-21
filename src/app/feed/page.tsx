@@ -1,5 +1,5 @@
 import { requireOwner } from "../owner";
-import { shabRunWarnings } from "@/digest/digest";
+import { runWarnings } from "@/digest/digest";
 import { getDb, getNearMisses, getTriage } from "../db";
 import { Nav, SourceNote } from "../nav";
 import { NearMissCard } from "./near-miss-card";
@@ -11,16 +11,16 @@ export default async function FeedPage() {
   await requireOwner();
   const queue = await (await getTriage()).queue();
   const nearMisses = await (await getNearMisses()).list();
-  const runWarnings = await shabRunWarnings(await getDb(), () => new Date());
+  const warnings = await runWarnings(await getDb(), () => new Date());
 
   return (
     <>
       <Nav current="feed" waiting={queue.length} />
       <main className="main feed">
-        {runWarnings.length > 0 && (
+        {warnings.length > 0 && (
           // The Sunday Digest can be switched off together with the SHAB schedule, so the Feed warns too.
           <div className="card run-warnings" role="status">
-            {runWarnings.map((w) => (
+            {warnings.map((w) => (
               <p key={w} className="small">
                 ⚠ {w}
               </p>

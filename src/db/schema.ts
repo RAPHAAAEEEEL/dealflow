@@ -2,6 +2,7 @@ import { date, doublePrecision, integer, jsonb, pgTable, text, timestamp, unique
 import type { Stage, StartupStatus } from "@/radar/radar";
 import type { Lane } from "@/screening/types";
 import type { Sighting } from "@/sighting";
+import type { FeedsRunReport } from "@/jobs/feeds-job";
 import type { ShabRunReport } from "@/jobs/shab-job";
 import type { NearMissDecision } from "@/triage/near-misses";
 import type { Claim, TriageDecision } from "@/triage/types";
@@ -57,6 +58,8 @@ export const sightings = pgTable(
     nearestLane: text("nearest_lane").$type<Lane>(),
     closeness: integer("closeness"),
     oneLiner: text("one_liner"),
+    // What Claude said about each startup an article names, kept as evidence for Proposals.
+    mentions: jsonb("mentions").$type<{ name: string; inLane: boolean; lane: Lane | null; closeness: number; reason: string }[]>(),
     startupId: uuid("startup_id").references(() => startups.id),
   },
   (t) => [uniqueIndex("sightings_source_external_id").on(t.source, t.externalId)],
@@ -122,9 +125,9 @@ export const calls = pgTable("calls", {
 // counts (docs/adr/0007), so the details live here, for the Owner and the weekly status check.
 export const jobRuns = pgTable("job_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  job: text("job").$type<"shab">().notNull(),
+  job: text("job").$type<"shab" | "feeds">().notNull(),
   publicationDate: date("publication_date").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
-  report: jsonb("report").$type<ShabRunReport>().notNull(),
+  report: jsonb("report").$type<ShabRunReport | FeedsRunReport>().notNull(),
 });

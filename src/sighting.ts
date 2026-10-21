@@ -1,3 +1,4 @@
+import type { FEEDS, FeedId } from "@/sources/feeds";
 import type { QuickAddDraft } from "@/sources/quick-add";
 
 // A Sighting is one raw publication from a Source, before Screening has judged it (CONTEXT.md).
@@ -30,7 +31,25 @@ export type QuickAddSighting = {
   company: QuickAddDraft;
 };
 
-export type Sighting = ShabSighting | QuickAddSighting;
+// An item from a startup news feed: its title, link and the feed's own teaser, never the full text
+// (docs/adr/0009). `uid` is the Swiss company number when the feed gives one.
+export type ArticleSighting = {
+  source: (typeof FEEDS)[FeedId]["name"];
+  feed: FeedId;
+  externalId: string;
+  publishedOn: string;
+  url: string;
+  title: string;
+  teaser: string;
+  uid: string | null;
+};
+
+export type Sighting = ShabSighting | QuickAddSighting | ArticleSighting;
+
+export function articlePayload(payload: Sighting | null): ArticleSighting {
+  if (!payload || !("feed" in payload)) throw new Error(`Expected an article Sighting, got ${payload?.source ?? "none"}`);
+  return payload;
+}
 
 // A stored payload that SHAB-only code reads, such as Screening and Near Misses.
 export function shabPayload(payload: Sighting | null): ShabSighting {

@@ -33,11 +33,11 @@ The part of the Screening Criteria that defines "early enough": before or around
 _Avoid_: Phase filter
 
 **Source**:
-A public, permitted origin of Sightings, such as the Swiss commercial register gazette (SHAB), a news feed, a newsletter inbox or Quick Add.
+A public, permitted origin of Sightings: the Swiss commercial register gazette (SHAB), startup news feeds such as deutsche-startups.de #Brandneu, a newsletter inbox, or Quick Add.
 _Avoid_: Provider, scraper, feed (the Feed is a view, not a Source)
 
 **Quick Add**:
-A Source the Owner feeds by hand. The Owner pastes a link or text, for example from LinkedIn, and the radar fills in the rest from open sources.
+A Source the Owner feeds by hand. The Owner shares a link or text, for example from LinkedIn, Claude drafts which company it is about, and the Owner confirms the draft. What the Owner adds skips Screening and goes first into Triage.
 _Avoid_: Manual entry, import
 
 **Sighting**:
@@ -49,7 +49,7 @@ The automatic check of a Sighting against the Screening Criteria. It either turn
 _Avoid_: Filtering, classification
 
 **Startup**:
-A young venture that the radar tracks, independent of its legal form or name changes. It has one primary Lane and at most one secondary Lane.
+A young venture that the radar tracks, independent of its legal form or name changes. It has one primary Lane and at most one secondary Lane. Two records are the same Startup when they share a Legal Entity, a website or the name without its legal form; anything less certain needs a Proposal to merge.
 _Avoid_: Company (on raphael.at that word means a Target Fund), deal, lead
 
 **Legal Entity**:

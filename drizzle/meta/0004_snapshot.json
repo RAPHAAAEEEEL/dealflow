@@ -1,5 +1,5 @@
 {
-  "id": "c70d7e59-3521-4644-b215-525a3b64442c",
+  "id": "17d4f1d7-757a-41c8-a135-ffb50988c9dc",
   "prevId": "16c6880c-dc38-4fdf-a5b0-f56cb7236c94",
   "version": "7",
   "dialect": "postgresql",
@@ -424,6 +424,12 @@
         "one_liner": {
           "name": "one_liner",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mentions": {
+          "name": "mentions",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

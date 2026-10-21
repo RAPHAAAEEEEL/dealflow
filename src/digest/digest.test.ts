@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { openDb, type Db } from "@/db";
+import { runFeedsJob } from "@/jobs/feeds-job";
 import { entryNamed as entry, runShabDay } from "@/jobs/shab-job.testing";
-import { fakeJudge, inLane, nearMiss, outOfScope } from "@/screening/judge.testing";
+import { fakeArticleJudge, fakeJudge, inLane, nearMiss, outOfScope } from "@/screening/judge.testing";
 import type { Judge } from "@/screening/types";
+import { createFeedSource, FEEDS, type FeedId } from "@/sources/feeds";
+import { fakeFeedHttp } from "@/sources/feeds.testing";
+import { fakePages } from "@/sources/quick-add.testing";
 import type { ShabHttp } from "@/sources/shab";
 import { buildDigest } from "./digest";
 
@@ -25,6 +29,21 @@ const runDay = (date: string, opts: Parameters<typeof runShabDay>[2] = {}) => ru
 // A run that breaks off because SHAB is down. It is recorded with the reason before the error passes on.
 const brokenDay = (date: string) => runShabDay(db, date, { http: shabDown }).catch(() => {});
 
+// A feeds run at `at`. Feeds the fake doesn't serve count as unreadable.
+const feedsRun = (at: string, feeds: FeedId[] = []) =>
+  runFeedsJob(
+    {
+      db,
+      feeds: createFeedSource(fakeFeedHttp({})),
+      pages: fakePages().fetcher,
+      judge: fakeArticleJudge().judge,
+      criteria: { version: 2, text: "Lanes." },
+      monthlyCapUsd: 10,
+      now: () => new Date(at),
+    },
+    feeds,
+  );
+
 const digest = (opts: { monthlyCapUsd?: number; shabTermsAcceptedOn?: string } = {}) =>
   buildDigest({
     db,
@@ -35,6 +54,8 @@ const digest = (opts: { monthlyCapUsd?: number; shabTermsAcceptedOn?: string } =
   });
 
 describe("Sunday digest", () => {
+  beforeEach(() => feedsRun("2026-10-18T06:00:00Z"));
+
   test("brings the waiting Candidates, the week's Near Misses and a clean status check", async () => {
     for (const date of WEEK) {
       const entries = date === "2026-10-14" ? [entry("Beispiel Kran AG"), entry("Beispiel Prüf AG"), entry("Beispiel Treuhand AG")] : [];
@@ -67,6 +88,7 @@ Discarded, but close to a Lane. In the Feed, pull one into Triage or confirm it 
 
 STATUS CHECK
 ✓ SHAB: every register day screened, Mon 12 Oct to Fri 16 Oct
+✓ Feeds: read on Sun 18 Oct
 ✓ Nothing waiting for screening
 ✓ Claude spend in October: $0.03 of $10.00
 ✓ SHAB terms accepted on 2026-10-17, run out on 2027-01-15 (in 89 days)
@@ -167,5 +189,34 @@ Register data from SHAB, the Swiss Official Gazette of Commerce (Amtsblattportal
     for (const date of WEEK) await runDay(date);
 
     expect((await digest({ shabTermsAcceptedOn: acceptedOn })).text).toContain(`${line}\n`);
+  });
+});
+
+describe("Feeds in the Status Check", () => {
+  beforeEach(async () => {
+    for (const date of WEEK) await runDay(date);
+  });
+
+  test("warns before the feeds have ever run", async () => {
+    expect((await digest()).text).toContain("⚠ Feeds: no run yet. Check Actions → Feeds job.\n");
+  });
+
+  test("warns when the feeds haven't run for two days", async () => {
+    await feedsRun("2026-10-15T06:00:00Z");
+
+    expect((await digest()).text).toContain(
+      "⚠ Feeds: no run since Thu 15 Oct. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.\n",
+    );
+  });
+
+  test("names a feed that couldn't be read", async () => {
+    await feedsRun("2026-10-18T06:00:00Z", ["eu-startups-de"]);
+
+    const { warnings, text } = await digest();
+
+    expect({ warnings, text }).toMatchObject({
+      warnings: 1,
+      text: expect.stringContaining(`⚠ Feeds: couldn't read EU-Startups: fetch failed for ${FEEDS["eu-startups-de"].url}\n`),
+    });
   });
 });

@@ -6,13 +6,18 @@ export const USER_AGENT = "DealflowRadar/0.1 (+https://github.com/RAPHAAAEEEEL/d
 const TIMEOUT_MS = 10_000;
 const MAX_HTML_CHARS = 1_000_000;
 
-// Opens one public web page and returns its readable text. Used for pages the Owner shared and for a
-// company's own website, never for LinkedIn (docs/adr/0002).
-export function createPageFetcher(): PageFetcher {
+// Opens one public web page and returns its readable text. Used for pages the Owner shared, a company's
+// own website and articles a feed only names, never for LinkedIn (docs/adr/0002). A job passes
+// `minIntervalMs` so that its requests go out one at a time, spaced apart.
+export function createPageFetcher({ minIntervalMs = 0 } = {}): PageFetcher {
+  let lastRequest = 0;
   return {
     async fetchText(url) {
       const target = new URL(url);
       if (!/^https?:$/.test(target.protocol) || isPrivateHost(target.hostname)) throw new Error(`Won't open ${url}`);
+      const wait = lastRequest + minIntervalMs - Date.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      lastRequest = Date.now();
       const response = await fetch(target, {
         headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml,text/plain" },
         signal: AbortSignal.timeout(TIMEOUT_MS),

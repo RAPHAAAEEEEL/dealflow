@@ -1,4 +1,4 @@
-import type { Judge, Judgement, Lane, Usage } from "./types";
+import type { ArticleJudge, ArticleMention, Judge, Judgement, Lane, Usage } from "./types";
 
 // Test double for Claude: judges a Sighting by its legal entity's name, as the test dictates.
 
@@ -36,4 +36,35 @@ export function fakeJudge({
       return { ...(byName[sighting.legalEntity.name] ?? otherwise), usage: usageCosting(costUsd) };
     },
   };
+}
+
+// One startup an article presents, as Claude would judge it: in a Lane when `lane` is given.
+export const mention = (name: string, lane: Lane | null, overrides: Partial<ArticleMention> = {}): ArticleMention => ({
+  name,
+  website: null,
+  country: "DE",
+  city: "Berlin",
+  inLane: lane !== null,
+  lane,
+  secondaryLane: null,
+  oneLiner: `${name} builds things.`,
+  signal: `Presented as a new startup.`,
+  stage: "Pre-round",
+  priority: lane ? 75 : 0,
+  closeness: lane ? 100 : 10,
+  reason: lane ? `Fits ${lane}.` : "Not in any Lane.",
+  ...overrides,
+});
+
+// Test double for Claude reading an article: names the startups the test gives for its title, and
+// remembers the text it was given.
+export function fakeArticleJudge({ byTitle = {}, costUsd = 0.001 }: { byTitle?: Record<string, ArticleMention[]>; costUsd?: number } = {}) {
+  const texts: string[] = [];
+  const judge: ArticleJudge = {
+    async judgeArticle(article) {
+      texts.push(article.text);
+      return { mentions: byTitle[article.title] ?? [], usage: usageCosting(costUsd) };
+    },
+  };
+  return { judge, texts };
 }

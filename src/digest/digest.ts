@@ -1,8 +1,9 @@
 import { and, count, desc, eq, gte, inArray, isNull, sum } from "drizzle-orm";
-import { addDays, dayOf, daysBetween } from "@/dates";
+import { addDays, DAY_MS, dayOf, daysBetween } from "@/dates";
 import type { Db } from "@/db";
 import { jobRuns, llmUsage, sightings } from "@/db/schema";
 import { LANE_NAMES } from "@/screening/types";
+import { ARTICLE_SOURCES } from "@/sources/feeds";
 import { shabTermsRunOutOn } from "@/sources/shab-terms";
 import { createNearMisses } from "@/triage/near-misses";
 import { createTriage } from "@/triage/triage";
@@ -21,6 +22,7 @@ export type Digest = { subject: string; text: string; warnings: number };
 type Check = { ok: boolean; text: string };
 
 const WINDOW_DAYS = 7;
+const FEEDS_STALE_DAYS = 2;
 const SPEND_WARNING_PERCENT = 80;
 const TERMS_REMINDER_DAYS = 14;
 const ERROR_SHOWN_CHARS = 200;
@@ -32,7 +34,7 @@ export async function buildDigest(deps: DigestDeps): Promise<Digest> {
   const { db, now, appUrl } = deps;
   const candidates = await createTriage(db, { now }).queue();
   const nearMisses = await createNearMisses(db, { now }).list();
-  const checks = [...(await shabDays(db, now)), await screeningBacklog(db), await spend(deps), terms(deps)];
+  const checks = [...(await shabDays(db, now)), ...(await feedsCheck(db, now)), ...(await screeningBacklog(db)), await spend(deps), terms(deps)];
   const warnings = checks.filter((c) => !c.ok).length;
 
   const text = [
@@ -71,10 +73,11 @@ export async function buildDigest(deps: DigestDeps): Promise<Digest> {
   return { subject, text, warnings };
 }
 
-// What went wrong with the past week's SHAB runs, one line per register day; empty when nothing did.
-// The Digest is itself a scheduled workflow that GitHub can switch off, so the Feed shows these too.
-export async function shabRunWarnings(db: Db, now: () => Date): Promise<string[]> {
-  return (await checkShabDays(db, now)).warnings;
+// What went wrong with the scheduled jobs: one line per SHAB register day of the past week, plus the
+// feeds. The Digest is itself a scheduled workflow that GitHub can switch off, so the Feed shows these too.
+export async function runWarnings(db: Db, now: () => Date): Promise<string[]> {
+  const feeds = await feedsCheck(db, now);
+  return [...(await checkShabDays(db, now)).warnings, ...feeds.filter((c) => !c.ok).map((c) => c.text)];
 }
 
 async function shabDays(db: Db, now: () => Date): Promise<Check[]> {
@@ -119,17 +122,57 @@ async function checkShabDays(db: Db, now: () => Date) {
   return { expected, warnings };
 }
 
-// Sightings that still wait for Claude: the month's budget ran out, or Claude failed on them. Every run
-// screens all waiting Sightings, whatever their Source, so the latest run's error is the one to show.
-async function screeningBacklog(db: Db): Promise<Check> {
-  const [{ waiting }] = await db.select({ waiting: count() }).from(sightings).where(isNull(sightings.screenedAt));
-  if (!waiting) return { ok: true, text: "Nothing waiting for screening" };
-  const [latestRun] = await db.select({ report: jobRuns.report }).from(jobRuns).orderBy(desc(jobRuns.startedAt)).limit(1);
-  const latestError = latestRun?.report.errors?.at(-1);
-  return {
-    ok: false,
-    text: `${waiting === 1 ? "1 entry waits" : `${waiting} entries wait`} for screening.${latestError ? ` Latest error: ${shorten(latestError)}` : ""}`,
-  };
+// The feeds run daily. A run is missing after two days; a feed that couldn't be read is named.
+async function feedsCheck(db: Db, now: () => Date): Promise<Check[]> {
+  const [latest] = await db
+    .select({ startedAt: jobRuns.startedAt, report: jobRuns.report })
+    .from(jobRuns)
+    .where(eq(jobRuns.job, "feeds"))
+    .orderBy(desc(jobRuns.startedAt))
+    .limit(1);
+  if (!latest) return [{ ok: false, text: "Feeds: no run yet. Check Actions → Feeds job." }];
+  const day = dayLabel(dayOf(latest.startedAt));
+  if (now().getTime() - latest.startedAt.getTime() > FEEDS_STALE_DAYS * DAY_MS) {
+    return [
+      {
+        ok: false,
+        text: `Feeds: no run since ${day}. GitHub stops scheduled workflows after 60 days without activity in the repository; check Actions → Feeds job.`,
+      },
+    ];
+  }
+  if (latest.report.error) return [{ ok: false, text: `Feeds: the last run broke off (${shorten(latest.report.error)}).` }];
+  const unread = "unreadFeeds" in latest.report ? (latest.report.unreadFeeds ?? []) : [];
+  if (unread.length) return unread.map((u) => ({ ok: false, text: `Feeds: couldn't read ${shorten(u)}` }));
+  return [{ ok: true, text: `Feeds: read on ${day}` }];
+}
+
+// Sightings that still wait for Claude, per job: the month's budget ran out, or Claude or an article
+// page failed. Each job screens only its own Sightings, so the error shown is that job's latest one.
+async function screeningBacklog(db: Db): Promise<Check[]> {
+  const backlogs = [
+    { job: "shab" as const, what: ["entry waits", "entries wait"], sources: ["SHAB"] },
+    { job: "feeds" as const, what: ["article waits", "articles wait"], sources: ARTICLE_SOURCES },
+  ];
+  const checks: Check[] = [];
+  for (const { job, what, sources } of backlogs) {
+    const [{ waiting }] = await db
+      .select({ waiting: count() })
+      .from(sightings)
+      .where(and(inArray(sightings.source, sources), isNull(sightings.screenedAt)));
+    if (!waiting) continue;
+    const [latestRun] = await db
+      .select({ report: jobRuns.report })
+      .from(jobRuns)
+      .where(eq(jobRuns.job, job))
+      .orderBy(desc(jobRuns.startedAt))
+      .limit(1);
+    const latestError = latestRun?.report.errors?.at(-1);
+    checks.push({
+      ok: false,
+      text: `${waiting === 1 ? `1 ${what[0]}` : `${waiting} ${what[1]}`} for screening.${latestError ? ` Latest error: ${shorten(latestError)}` : ""}`,
+    });
+  }
+  return checks.length ? checks : [{ ok: true, text: "Nothing waiting for screening" }];
 }
 
 async function spend({ db, now, monthlyCapUsd }: DigestDeps): Promise<Check> {

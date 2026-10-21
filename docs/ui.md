@@ -5,7 +5,8 @@ Decided on 2026-10-18 after clicking through three throwaway variants. The full 
 The radar uses three views, each where it is strongest:
 
 - **Radar map (desktop home and showcase image).** Lanes are sectors and stages are rings. A new startup appears at the rim (Pre-round) and moves inward as it gets closer to its Institutional Round. Startups with a Signal in the last 7 days pulse. A side panel lists this week's new Signals and starts a guided Triage that walks through the Candidates on the map.
-- **Feed (mobile, for the weekly Triage).** Triage happens inline in the cards: Track, Pass or Out of Scope, with the Call and a one-line rationale. Below the Candidates, the week's Near Misses, at most five, closest first, each with "Pull into Triage" and "Rightly out". Bottom navigation: Feed, Startups, Record.
+- **Feed (mobile, for the weekly Triage).** Triage happens inline in the cards: Track, Pass or Out of Scope, with the Call and a one-line rationale. Below the Candidates, the week's Near Misses, at most five, closest first, each with "Pull into Triage" and "Rightly out". Bottom navigation: Feed, Startups, Add, and later Record.
+- **Add (mobile, Quick Add).** Opened from the iPhone share sheet with what was shared; Claude's draft of the company is checked and corrected before it goes on the radar.
 - **Table (all startups, desktop).** A sortable, filterable list. On mobile it becomes the searchable list under "Startups".
 
 Defaults proposed on top of the prototype, open to change while building:

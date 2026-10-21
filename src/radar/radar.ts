@@ -118,7 +118,7 @@ export type Discovery = {
   stage: Stage;
   website: string | null;
   firstSeen: string;
-  legalEntity: { name: string; uid: string | null; legalForm: string; seat: string; registeredOn: string } | null;
+  legalEntity: { name: string; uid: string | null; legalForm: string; seat: string; registeredOn: string | null } | null;
   signal: { date: string; source: string; text: string; url: string | null };
 };
 

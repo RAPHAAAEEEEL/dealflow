@@ -16,7 +16,7 @@ What counts as in or out of each lane is written down in [criteria/screening-cri
 
 ## How it works
 
-1. **Sources** deliver raw publications. Today that is the Swiss commercial-register gazette (SHAB): every new company registered in Switzerland.
+1. **Sources** deliver raw publications: every new company in the Swiss commercial register (SHAB), the startup news feeds of deutsche-startups.de (#Brandneu), startupticker.ch and EU-Startups for Germany, Austria and Switzerland, and **Quick Add**, where I share what I find on LinkedIn from my phone.
 2. **Screening** discards everything that can't take venture money (only an AG or a GmbH can) for free. Claude Haiku then judges the rest against the lane definitions, for an estimated $1 a month.
 3. **Candidates** land on the radar with their lane, a one-line description and a priority for my weekly review. Entries that Claude discarded but found close to a lane show up as **near misses**: I either pull one into triage or confirm it was rightly out, and both decisions become evidence for proposed changes to the lane definitions.
 4. **Triage**. Every Sunday an email brings the waiting candidates, the week's near misses and a status check of the pipeline. Then I decide on each candidate (Track, Pass or Out of Scope) and make a **Call**: my probability that the startup raises an institutional round within 12 months, and Series A within 36 months.
@@ -35,10 +35,10 @@ What counts as in or out of each lane is written down in [criteria/screening-cri
 
 ## Sources and privacy
 
-- **Public and permitted sources only.** There is no LinkedIn scraping; LinkedIn reaches the radar only when I paste a link by hand.
+- **Public and permitted sources only.** There is no LinkedIn scraping; LinkedIn reaches the radar only when I share something by hand, and the radar never opens LinkedIn itself. News feeds are read for their titles, links and teasers; full articles are never stored.
 - **The register's terms are followed.** The SHAB data is used under its terms: the source is named, it is marked as not an official publication, and requests are throttled.
 - **No founder names.** The radar keeps anonymous team profiles. Names appear only once I'm in contact with someone.
-- **Germany has no open company register.** German coverage relies on indirect sources (news, grants, university spin-offs), so the radar currently leans Swiss.
+- **Germany has no open company register.** German and Austrian coverage relies on news feeds and Quick Add; university spin-offs and grant lists come next.
 
 The reasoning behind these choices is in [docs/adr](docs/adr). The domain vocabulary is in [CONTEXT.md](CONTEXT.md).
 
@@ -50,7 +50,7 @@ The reasoning behind these choices is in [docs/adr](docs/adr). The domain vocabu
 | v1 | Triage with Scorecard and Calls, mobile Feed, sortable table | ✅ built and tested |
 | v1 | Deployment: Vercel and Neon in Frankfurt, daily SHAB job, GitHub login for the Owner | ✅ built; set up with `scripts/setup-deployment.sh` |
 | v1 | Near misses in the Feed, Sunday email with status check | ✅ built and tested |
-| v1 | Second source (#Brandneu), Quick Add | next |
+| v1 | Quick Add from the iPhone; news feeds for Germany, Austria and Switzerland | ✅ built and tested |
 | v2 | Newsletter inbox, watchlist and outcomes, track record, per-fund views | planned |
 | v3 | Backtest on 2022–23 cohorts, more sources, learning loops for screening and prediction | planned |
 
@@ -68,6 +68,7 @@ To screen real registrations, copy `.env.example` to `.env.local` and fill in a 
 
 ```bash
 npm run job:shab -- 2026-10-16
+npm run job:feeds           # read the news feeds once
 npm run digest -- --print   # the Sunday email, shown here instead of sent
 ```
 

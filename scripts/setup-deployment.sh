@@ -180,13 +180,14 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job, Sunday digest).
+# STAGES: Dealflow deployment (Neon, Vercel, GitHub login, scheduled SHAB job, Sunday digest,
+# Quick Add on the iPhone, news feeds).
 # Secrets are typed hidden, piped to gh / the Vercel CLI, and never printed.
 # Resume after finished stages:  START_AT=6 ./scripts/setup-deployment.sh
 # Redo a single stage:            ONLY=3 ./scripts/setup-deployment.sh
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=12
+TOTAL_STAGES=14
 ONLY="${ONLY:-}"
 START_AT="${ONLY:-${START_AT:-1}}"
 END_AT="${ONLY:-$TOTAL_STAGES}"
@@ -523,6 +524,60 @@ stage_12() {
     else
       SKIPPED+=("First digest (GitHub → Actions → Sunday digest → Run workflow)")
       warn "Couldn't start it; start it in GitHub → Actions → Sunday digest → Run workflow."
+    fi
+  fi
+  pause
+}
+
+stage_13() {
+  stage "Quick Add on the iPhone"
+  say "Quick Add asks Claude from the deployed app, so Vercel needs the Claude API key too."
+  # A distinct global name: the ask helpers keep their own local "key".
+  VERCEL_CLAUDE_KEY="$(_existing ANTHROPIC_API_KEY || true)"
+  if [[ -n "$VERCEL_CLAUDE_KEY" ]] && anthropic_key_works "$VERCEL_CLAUDE_KEY"; then
+    note "Using the Claude key from $ENV_FILE; it goes to Vercel through stdin, never shown."
+  else
+    warn "No working Claude key in $ENV_FILE. Paste it here (the same one as in stage 3)."
+    ask_secret_until_or_clipboard VERCEL_CLAUDE_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
+    until anthropic_key_works "$VERCEL_CLAUDE_KEY"; do
+      warn "Anthropic rejects this key. Copy it again from the Console."
+      ask_secret_until_or_clipboard VERCEL_CLAUDE_KEY "API key (hidden), or c for the clipboard:" '^sk-ant-[A-Za-z0-9]+-[A-Za-z0-9_-]{60,140}$' "That isn't one Claude API key."
+    done
+  fi
+  vercel_env ANTHROPIC_API_KEY "$VERCEL_CLAUDE_KEY"
+  if confirm "Redeploy production now, so the key applies?"; then
+    if "${VERCEL[@]}" redeploy "$DEALFLOW_APP_URL" --target production >/dev/null 2>&1; then
+      printf '  %s✓%s Production redeployed.\n' "$GREEN" "$RESET"
+    else
+      warn "The CLI redeploy didn't work. In Vercel: Deployments → newest → ⋯ → Redeploy."
+    fi
+  fi
+  say ""
+  say "Now on the iPhone:"
+  step "In Safari, open $DEALFLOW_APP_URL/add and sign in with GitHub once."
+  step "Open 'Set up sharing from the iPhone' on that page and build the shortcut as it says (5 steps)."
+  step "Try it: in LinkedIn, open a startup's company page, tap Share, choose Dealflow, then 'Read it'."
+  pause "Press Enter once a Quick Add worked, or to finish later"
+}
+
+stage_14() {
+  stage "First feeds run"
+  say "From now on GitHub reads the news feeds every morning. Let's run them once now."
+  git fetch --quiet origin main 2>/dev/null || warn "Couldn't reach GitHub; checking the last known state of main."
+  if ! git cat-file -e origin/main:.github/workflows/feeds.yml 2>/dev/null; then
+    SKIPPED+=("First feeds run: push the feeds job to GitHub's main branch, then run ONLY=14")
+    warn "GitHub's main branch doesn't contain the feeds workflow yet. Once it does: ONLY=14"
+    pause
+    return
+  fi
+  if confirm "Read the feeds now? The first run works through about 90 articles, costs about 5 cents and takes about 5 minutes."; then
+    if gh workflow run feeds.yml -R "$REPO" >/dev/null 2>&1; then
+      printf '  %s✓%s Started.\n' "$GREEN" "$RESET"
+      open_url "https://github.com/$REPO/actions/workflows/feeds.yml"
+      step "When the run is green, reload the Feed: new Candidates from Germany, Austria and Switzerland wait there."
+    else
+      SKIPPED+=("First feeds run (GitHub → Actions → Feeds job → Run workflow)")
+      warn "Couldn't start the run; start it in GitHub → Actions → Feeds job → Run workflow."
     fi
   fi
   pause
